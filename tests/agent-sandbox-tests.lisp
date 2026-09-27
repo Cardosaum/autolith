@@ -143,6 +143,9 @@ workspace and state, and keeps its images and source read-only."
                                                (quoted (merge-pathnames "README"
                                                                         source-root)))))
                        "the agent cannot modify a source root outside its workspace")
+          (with-test-environment (("AUTOLITH_LAUNCHER_TERMINAL" "/dev/null"))
+            (test-assert (not (allowed-p "cat /dev/null"))
+                         "the agent cannot open the launcher's terminal device"))
           (test-assert
            (not (zerop (nth-value
                         2 (uiop:run-program

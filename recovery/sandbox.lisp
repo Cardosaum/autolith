@@ -103,6 +103,8 @@ cannot inspect the broker through the host process table."
         (list (rule launcher-data-root ':read))
         (when (uiop:getenv "AUTOLITH_BROKER_SOCKET")
           (list (rule (agent-sandbox--broker-directory) ':read)))
+        (when (uiop:getenv "AUTOLITH_LAUNCHER_TERMINAL")
+          (list (rule (agent-sandbox--launcher-terminal) ':deny)))
         (mapcar (lambda (kind) (rule (autolith-launcher-root kind) ':deny))
                 '(:config :state))
         (list (rule source-root ':read))
@@ -176,6 +178,18 @@ process status: 0, or 1 after explaining why the sandbox is unavailable."
 
 
 ;;;; -- Private Functions --
+
+(serapeum:-> agent-sandbox--launcher-terminal () pathname)
+(defun agent-sandbox--launcher-terminal ()
+  "Validate the real launcher terminal that the agent must never open."
+  (let ((value (uiop:getenv "AUTOLITH_LAUNCHER_TERMINAL")))
+    (unless (and value
+                 (uiop:absolute-pathname-p (pathname value))
+                 (uiop:subpathp (pathname value) #P"/dev/")
+                 (probe-file value))
+      (error 'agent-sandbox-unavailable
+             :message "The launcher terminal path is invalid."))
+    (pathname value)))
 
 (serapeum:-> agent-sandbox--broker-directory () pathname)
 (defun agent-sandbox--broker-directory ()

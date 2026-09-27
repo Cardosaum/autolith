@@ -118,6 +118,9 @@ recovery_session_pointer=
 broker_directory=
 broker_socket=
 broker_pid=
+approval_directory=
+approval_socket=
+terminal_relay=
 
 if [[ -t 0 ]]; then
   terminal_state=$(stty -g 2>/dev/null || true)
@@ -158,6 +161,12 @@ finish_launcher()
     broker_directory=
     broker_socket=
   fi
+  if [[ -n "$approval_directory" ]]; then
+    rm -f -- "$approval_socket"
+    rmdir -- "$approval_directory" 2>/dev/null || true
+    approval_directory=
+    approval_socket=
+  fi
   if [[ -n "$crash_pointer" ]]; then
     rm -f -- "$crash_pointer"
   fi
@@ -182,6 +191,16 @@ start_broker()
   broker_directory=$(mktemp -d "/tmp/autolith-broker.XXXXXX") || return 64
   chmod 700 "$broker_directory" || return 64
   broker_socket=$broker_directory/broker.sock
+  if [[ -t 0 && -t 1 ]]; then
+    mkdir -p -- "$state_home/autolith-launcher/approval" || return 64
+    chmod 700 "$state_home/autolith-launcher" \
+      "$state_home/autolith-launcher/approval" || return 64
+    approval_directory=$(mktemp -d \
+      "$state_home/autolith-launcher/approval/session.XXXXXX") || return 64
+    chmod 700 "$approval_directory" || return 64
+    approval_socket=$approval_directory/control.sock
+    export AUTOLITH_BROKER_APPROVAL_SOCKET=$approval_socket
+  fi
   "$sbcl_command" --noinform --core "$active_core" \
     --end-runtime-options "$source_root" \
     --autolith-internal-broker "$broker_socket" \
@@ -200,6 +219,41 @@ start_broker()
   printf '%sAutolith could not start its credential broker.%s\n' \
     "$launcher_failure" "$launcher_reset" >&2
   return 64
+}
+
+ensure_terminal_relay()
+{
+  local staged
+
+  if [[ -n ${AUTOLITH_TERMINAL_RELAY:-} ]]; then
+    [[ -x "$AUTOLITH_TERMINAL_RELAY" ]] || return 64
+    terminal_relay=$AUTOLITH_TERMINAL_RELAY
+    return 0
+  fi
+  terminal_relay=$launcher_data_root/helpers/terminal-relay
+  [[ ! -L "$launcher_data_root/helpers" && ! -L "$terminal_relay" ]] || return 64
+  mkdir -p -- "$launcher_data_root/helpers" || return 64
+  chmod 700 "$launcher_data_root/helpers" || return 64
+  if [[ -x "$terminal_relay" &&
+        "$terminal_relay" -nt "$source_root/native/terminal-relay.c" ]]; then
+    return 0
+  fi
+  staged=$(mktemp "$launcher_data_root/helpers/.terminal-relay.XXXXXX") || return 64
+  if [[ $(uname -s) == Linux ]]; then
+    /usr/bin/cc -std=c11 -Wall -Wextra -Werror -O2 \
+      "$source_root/native/terminal-relay.c" -lutil -o "$staged" || {
+        rm -f -- "$staged"
+        return 64
+      }
+  else
+    /usr/bin/cc -std=c11 -Wall -Wextra -Werror -O2 \
+      "$source_root/native/terminal-relay.c" -o "$staged" || {
+        rm -f -- "$staged"
+        return 64
+      }
+  fi
+  chmod 700 "$staged" || return 64
+  mv -f -- "$staged" "$terminal_relay" || return 64
 }
 
 run_recovery()
@@ -237,6 +291,7 @@ run_agent()
 {
   local plan
   local argument
+  local launcher_terminal
   local wrapped=()
 
   case ${AUTOLITH_AGENT_SANDBOX:-} in
@@ -246,6 +301,12 @@ run_agent()
       ;;
   esac
   start_broker || return 64
+  if [[ -n "$approval_socket" ]]; then
+    ensure_terminal_relay || return 64
+    launcher_terminal=$(tty) || return 64
+    [[ "$launcher_terminal" == /dev/* ]] || return 64
+    export AUTOLITH_LAUNCHER_TERMINAL=$launcher_terminal
+  fi
   plan=$(mktemp "${TMPDIR:-/tmp}/autolith-sandbox.XXXXXX") || return 64
   if ! run_recovery --agent-sandbox-command "$@" > "$plan"; then
     rm -f -- "$plan"
@@ -260,7 +321,12 @@ run_agent()
       "$launcher_failure" "$launcher_reset" >&2
     return 64
   fi
-  AUTOLITH_AGENT_SANDBOX=active "${wrapped[@]}"
+  if [[ -n "$approval_socket" ]]; then
+    AUTOLITH_AGENT_SANDBOX=active \
+      "$terminal_relay" "$approval_socket" -- "${wrapped[@]}"
+  else
+    AUTOLITH_AGENT_SANDBOX=active "${wrapped[@]}"
+  fi
 }
 
 run_active_core()
