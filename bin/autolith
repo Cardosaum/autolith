@@ -44,6 +44,7 @@ esac
 source_checksums_path=$source_root/sbcl-source-releases.sha256
 terminal_state=
 state_home=$(xdg_base_directory "${XDG_STATE_HOME:-}" "$HOME/.local/state")
+cache_home=$(xdg_base_directory "${XDG_CACHE_HOME:-}" "$HOME/.cache")
 data_home=$(xdg_base_directory "${XDG_DATA_HOME:-}" "$HOME/.local/share")
 data_home=${data_home%/}
 [ -n "$data_home" ] || data_home=/
@@ -183,14 +184,16 @@ start_broker()
     kill -0 "$broker_pid" 2>/dev/null && [[ -S "$broker_socket" ]]
     return $?
   fi
-  if ! active_image_valid; then
-    printf '%sAutolith needs a current active image to start its credential broker.%s\n' \
-      "$launcher_failure" "$launcher_reset" >&2
-    return 64
-  fi
-  broker_directory=$(mktemp -d "/tmp/autolith-broker.XXXXXX") || return 64
+  mkdir -p -- "$state_home/autolith-launcher/broker" || return 64
+  chmod 700 "$state_home/autolith-launcher" \
+    "$state_home/autolith-launcher/broker" || return 64
+  broker_directory=$(mktemp -d \
+    "$state_home/autolith-launcher/broker/session.XXXXXX") || return 64
   chmod 700 "$broker_directory" || return 64
   broker_socket=$broker_directory/broker.sock
+  export AUTOLITH_BROKER_CAPABILITY
+  AUTOLITH_BROKER_CAPABILITY=$(od -An -tx1 -N32 /dev/urandom | tr -d '[:space:]') || return 64
+  [[ ${#AUTOLITH_BROKER_CAPABILITY} -eq 64 ]] || return 64
   if [[ -t 0 && -t 1 ]]; then
     mkdir -p -- "$state_home/autolith-launcher/approval" || return 64
     chmod 700 "$state_home/autolith-launcher" \
@@ -201,9 +204,7 @@ start_broker()
     approval_socket=$approval_directory/control.sock
     export AUTOLITH_BROKER_APPROVAL_SOCKET=$approval_socket
   fi
-  "$sbcl_command" --noinform --core "$active_core" \
-    --end-runtime-options "$source_root" \
-    --autolith-internal-broker "$broker_socket" \
+  run_trusted_source --autolith-internal-broker "$broker_socket" \
     </dev/null >/dev/null 2>&1 &
   broker_pid=$!
   for ((attempt=0; attempt<300; attempt++)); do
@@ -219,6 +220,19 @@ start_broker()
   printf '%sAutolith could not start its credential broker.%s\n' \
     "$launcher_failure" "$launcher_reset" >&2
   return 64
+}
+
+run_trusted_source()
+{
+  local trusted_cache=$cache_home/autolith-launcher/trusted-source
+
+  mkdir -p -- "$trusted_cache/asdf" || return 64
+  chmod 700 "$cache_home/autolith-launcher" "$trusted_cache" || return 64
+  env -u AUTOLITH_PROJECT_SETUP -u ASDF_OUTPUT_TRANSLATIONS \
+    -u CL_SOURCE_REGISTRY \
+    XDG_CACHE_HOME="$trusted_cache" \
+    AUTOLITH_ASDF_CACHE="$trusted_cache/asdf" \
+    "$sbcl_command" --script "$source_root/bin/autolith-active" "$@"
 }
 
 ensure_terminal_relay()
@@ -441,13 +455,7 @@ if [[ ${remaining_arguments[0]:-} == auth ]]; then
     printf 'Usage: autolith auth [PROVIDER] [METHOD]\n' >&2
     exit 64
   fi
-  if ! active_image_valid; then
-    printf '%sAutolith needs a current active image for trusted authentication.%s\n' \
-      "$launcher_failure" "$launcher_reset" >&2
-    exit 64
-  fi
-  "$sbcl_command" --noinform --core "$active_core" \
-    --end-runtime-options "$source_root" \
+  run_trusted_source \
     --autolith-internal-auth "${remaining_arguments[@]:1}" || exit $?
   remaining_arguments=()
 fi

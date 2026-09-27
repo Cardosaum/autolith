@@ -57,6 +57,16 @@ launches pass their command through unchanged."
            (format nil "a workspace at ~A is refused" workspace))))))
   nil)
 
+(-> agent-sandbox-tests--socket-probe-command (pathname) string)
+(defun agent-sandbox-tests--socket-probe-command (socket-pathname)
+  "Return a disposable SBCL command connecting to SOCKET-PATHNAME."
+  (format nil "~A --noinform --non-interactive --eval '(require :sb-bsd-sockets)' --eval ~A"
+          (uiop:escape-sh-token (uiop:getenv "AUTOLITH_SBCL"))
+          (uiop:escape-sh-token
+           (format nil
+                   "(let ((socket (make-instance 'sb-bsd-sockets:local-socket :type :stream))) (unwind-protect (sb-bsd-sockets:socket-connect socket ~S) (sb-bsd-sockets:socket-close socket)))"
+                   (namestring socket-pathname)))))
+
 (-> test-agent-sandbox-enforcement () null)
 (defun test-agent-sandbox-enforcement ()
   "Test the agent sandbox hides the home directory, lets the agent write its
@@ -80,6 +90,8 @@ workspace and state, and keeps its images and source read-only."
            (active (merge-pathnames ".local/share/autolith-launcher/active/" home))
            (worktrees (merge-pathnames ".local/share/autolith-launcher/recovery-worktrees/" home))
            (user-cache (merge-pathnames ".cache/common-lisp/" home))
+           (trusted-cache (merge-pathnames
+                           ".cache/autolith-launcher/trusted-source/" home))
            (agent-cache (merge-pathnames ".cache/autolith/" home)))
       (agent-sandbox-tests--write (merge-pathnames "README" source-root) "source")
       (ensure-directories-exist workspace)
@@ -88,6 +100,8 @@ workspace and state, and keeps its images and source read-only."
       (ensure-directories-exist active)
       (ensure-directories-exist worktrees)
       (ensure-directories-exist user-cache)
+      (agent-sandbox-tests--write
+       (merge-pathnames "trusted.fasl" trusted-cache) "trusted")
       (ensure-directories-exist agent-cache)
       (with-test-environment (("HOME" (agent-sandbox-tests--native home))
                               ("XDG_CONFIG_HOME" nil)
@@ -170,6 +184,12 @@ workspace and state, and keeps its images and source read-only."
         (test-assert (not (allowed-p (format nil "echo x > ~A"
                                              (quoted (merge-pathnames "fasl" user-cache)))))
                      "the agent cannot write the user's ASDF cache")
+        (test-assert
+         (not (allowed-p
+               (format nil "cat ~A"
+                       (quoted (merge-pathnames "trusted.fasl"
+                                                  trusted-cache)))))
+         "the agent cannot read the broker's trusted compiler cache")
         (test-assert (not (allowed-p (format nil "echo x > ~A"
                                              (quoted (merge-pathnames "config" worktrees)))))
                      "the agent cannot write the checkouts recovery runs Git in")
@@ -180,27 +200,96 @@ workspace and state, and keeps its images and source read-only."
             (test-assert (not (allowed-p (format nil "echo x > ~A"
                                                  (quoted (merge-pathnames "file" target)))))
                          (format nil "the agent cannot write the launcher's ~A" relative))))
-        (let* ((broker-root
+        (let* ((broker-state-home
                  (platform-make-temporary-directory
-                  *platform* #P"/tmp/" "autolith-broker."))
-               (broker-socket (merge-pathnames "broker.sock" broker-root)))
+                  *platform* #P"/tmp/" "autolith-state."))
+               (broker-parent
+                 (merge-pathnames
+                  "autolith-launcher/broker/" broker-state-home)))
           (unwind-protect
                (progn
-                 (agent-sandbox-tests--write broker-socket "socket marker")
+                 (ensure-directories-exist
+                  (merge-pathnames "marker" broker-parent))
                  (with-test-environment
-                     (("AUTOLITH_BROKER_SOCKET"
-                        (agent-sandbox-tests--native broker-socket)))
-                   (test-assert
-                    (allowed-p (format nil "cat ~A" (quoted broker-socket)))
-                    "the agent can reach the broker socket directory")
-                   (test-assert
-                    (not (allowed-p
-                          (format nil "echo replaced > ~A"
-                                  (quoted broker-socket))))
-                    "the agent cannot replace the broker socket")))
-            (platform-delete-directory-tree *platform* broker-root
-                                            :validate t
-                                            :if-does-not-exist ':ignore)))
+                     (("XDG_STATE_HOME"
+                        (agent-sandbox-tests--native broker-state-home)))
+                   (let* ((broker-root
+                            (platform-make-temporary-directory
+                             *platform* broker-parent "session."))
+                          (broker-socket
+                            (merge-pathnames "broker.sock" broker-root))
+                          (listener
+                            (make-instance 'sb-bsd-sockets:local-socket
+                                           :type ':stream)))
+                     (unwind-protect
+                          (progn
+                            (sb-bsd-sockets:socket-bind
+                             listener (namestring broker-socket))
+                            (sb-bsd-sockets:socket-listen listener 4)
+                            (with-test-environment
+                                (("AUTOLITH_BROKER_SOCKET"
+                                   (agent-sandbox-tests--native
+                                    broker-socket)))
+                              (let ((command
+                                      (agent-sandbox-tests--socket-probe-command
+                                       broker-socket)))
+                                (multiple-value-bind
+                                      (result error-output status)
+                                    (uiop:run-program
+                                     (agent-sandbox-wrap
+                                      (list "/bin/sh" "-c" command)
+                                      :source-root source-root
+                                      :workspace workspace)
+                                     :directory workspace :output ':string
+                                     :error-output ':string
+                                     :ignore-error-status t)
+                                  (test-assert
+                                   (zerop status)
+                                   (format nil
+                                           "the agent connects to its exact broker socket: ~A ~A"
+                                           result error-output))))
+                              (test-assert
+                               (not (allowed-p
+                                     (format nil "echo replaced > ~A"
+                                             (quoted broker-socket))))
+                               "the agent cannot replace the broker socket")
+                              (let* ((other-root
+                                       (platform-make-temporary-directory
+                                        *platform* broker-parent
+                                        "session.other."))
+                                     (other-socket
+                                       (merge-pathnames
+                                        "broker.sock" other-root))
+                                     (other-listener
+                                       (make-instance
+                                        'sb-bsd-sockets:local-socket
+                                        :type ':stream)))
+                                (unwind-protect
+                                     (progn
+                                       (sb-bsd-sockets:socket-bind
+                                        other-listener
+                                        (namestring other-socket))
+                                       (sb-bsd-sockets:socket-listen
+                                        other-listener 4)
+                                       (test-assert
+                                        (not (allowed-p
+                                              (agent-sandbox-tests--socket-probe-command
+                                               other-socket)))
+                                        "the agent cannot connect to another session's broker"))
+                                  (ignore-errors
+                                    (sb-bsd-sockets:socket-close
+                                     other-listener))
+                                  (platform-delete-directory-tree
+                                   *platform* other-root :validate t
+                                   :if-does-not-exist ':ignore)))))
+                       (ignore-errors
+                         (sb-bsd-sockets:socket-close listener))
+                       (platform-delete-directory-tree
+                        *platform* broker-root :validate t
+                        :if-does-not-exist ':ignore)))))
+            (platform-delete-directory-tree
+             *platform* broker-state-home :validate t
+             :if-does-not-exist ':ignore)))
         (let ((cache-home (output "printf %s \"$XDG_CACHE_HOME\"")))
           (test-assert (uiop:string-prefix-p
                         (agent-sandbox-tests--native

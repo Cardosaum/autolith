@@ -865,29 +865,51 @@ printf '(:ACTIVE-IMAGE :VERSION 1\\n)\\n' > \"$active/manifest.sexp\"
                (agent-position (search "SBCL" events :from-end t)))
            (and auth-position agent-position
                 (< auth-position agent-position)
+                (search "SBCL --script" events)
                 (search "ACTIVE" output)))
-         "launcher authenticates in its immutable image before starting the agent"))
-      (let ((sandboxed-environment
-              (cons "AUTOLITH_AGENT_SANDBOX=" (rest environment))))
-        (multiple-value-bind (output error-output status)
-            (release-script-tests--run
-             (list (namestring launcher) "--from-source")
-             :environment sandboxed-environment
-             :ignore-error-status t)
-          (test-assert
-           (and (zerop status)
-                (search "SANDBOX=active WRAPPED=1" output))
-           (format nil "the launcher wraps the agent with a live broker: ~A ~A"
-                   error-output (uiop:read-file-string log))))
-        (multiple-value-bind (output error-output status)
-            (release-script-tests--run
-             (list (namestring launcher) "--from-source")
-             :environment (cons "AUTOLITH_TEST_SANDBOX_FAILURE=1" sandboxed-environment)
-             :ignore-error-status t)
-          (test-assert (and (= status 64)
-                            (not (search "SOURCE" output))
-                            (search "fixture sandbox unavailable" error-output))
-                       "an unavailable sandbox refuses to start the agent unconfined")))
+         "launcher authenticates from protected source before starting the agent"))
+      (let* ((broker-state-home
+               (platform-make-temporary-directory
+                *platform* #P"/tmp/" "autolith-state."))
+             (sandboxed-environment
+               (append
+                (list "AUTOLITH_AGENT_SANDBOX="
+                      (format nil "XDG_STATE_HOME=~A"
+                              (namestring broker-state-home)))
+                (remove-if
+                 (lambda (entry)
+                   (zerop (or (search "XDG_STATE_HOME=" entry) -1)))
+                 (rest environment)))))
+        (unwind-protect
+             (progn
+               (multiple-value-bind (output error-output status)
+                   (release-script-tests--run
+                    (list (namestring launcher) "--from-source")
+                    :environment sandboxed-environment
+                    :ignore-error-status t)
+                 (test-assert
+                  (and (zerop status)
+                       (search "BROKER --script"
+                               (uiop:read-file-string log))
+                       (search "SANDBOX=active WRAPPED=1" output))
+                  (format nil
+                          "the launcher wraps the agent with a source-built broker: ~A ~A"
+                          error-output (uiop:read-file-string log))))
+               (multiple-value-bind (output error-output status)
+                   (release-script-tests--run
+                    (list (namestring launcher) "--from-source")
+                    :environment
+                    (cons "AUTOLITH_TEST_SANDBOX_FAILURE=1"
+                          sandboxed-environment)
+                    :ignore-error-status t)
+                 (test-assert
+                  (and (= status 64)
+                       (not (search "SOURCE" output))
+                       (search "fixture sandbox unavailable" error-output))
+                  "an unavailable sandbox refuses to start the agent unconfined")))
+          (platform-delete-directory-tree *platform* broker-state-home
+                                          :validate t
+                                          :if-does-not-exist ':ignore)))
       (delete-file active-core)
       (delete-file active-manifest)
       (let* ((fallback-environment

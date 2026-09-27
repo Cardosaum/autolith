@@ -22,12 +22,13 @@ the user runs Autolith unconfined.")
   "Lisp dependency stores below the home directory that the agent reads.")
 
 (defparameter *agent-sandbox-passthrough-variables*
-  '("HOME" "USER" "LOGNAME" "SHELL" "PATH" "TMPDIR"
+  '("HOME" "USER" "LOGNAME" "SHELL" "PATH"
     "TERM" "COLORTERM" "LANG" "LC_ALL" "LC_CTYPE"
     "XDG_CONFIG_HOME" "XDG_DATA_HOME" "XDG_STATE_HOME"
     "SBCL_HOME" "AUTOLITH_SBCL" "AUTOLITH_SBCL_SOURCE_ROOT"
     "AUTOLITH_SOURCE_ROOT" "AUTOLITH_PROJECT_SETUP"
-    "AUTOLITH_BROKER_SOCKET" "AUTOLITH_CRASH_POINTER"
+    "AUTOLITH_BROKER_SOCKET" "AUTOLITH_BROKER_CAPABILITY"
+    "AUTOLITH_CRASH_POINTER"
     "AUTOLITH_RECOVERY_SESSION_POINTER" "AUTOLITH_RESTART_POINTER"
     "AUTOLITH_RECOVERED" "AUTOLITH_RECOVERY_CONVERSATION_ID"
     "AUTOLITH_RECOVERY_HISTORY_FLOOR_SEQUENCE"
@@ -85,6 +86,11 @@ cannot inspect the broker through the host process table."
              (cl-exec-sandbox:make-filesystem-rule :kind ':special :path path :access access)))
       (cl-exec-sandbox:make-sandbox-policy
        :network ':enabled
+       :unix-socket-paths
+       (when (uiop:getenv "AUTOLITH_BROKER_SOCKET")
+         (list (pathname (uiop:getenv "AUTOLITH_BROKER_SOCKET"))))
+       :private-tmp-p t
+       :private-runtime-p t
        :isolate-processes-p t
        :workspace-roots
        (unless (uiop:subpathp workspace source-root)
@@ -96,7 +102,6 @@ cannot inspect the broker through the host process table."
               (special ':home ':deny)
               (special ':search-path ':read)
               (special ':workspace-roots ':write)
-              (special ':tmpdir ':write)
               (special ':slash-tmp ':write))
         (mapcar (lambda (kind) (rule (autolith-application-root kind) ':write))
                 '(:config :data :state :cache))
@@ -106,7 +111,7 @@ cannot inspect the broker through the host process table."
         (when (uiop:getenv "AUTOLITH_LAUNCHER_TERMINAL")
           (list (rule (agent-sandbox--launcher-terminal) ':deny)))
         (mapcar (lambda (kind) (rule (autolith-launcher-root kind) ':deny))
-                '(:config :state))
+                '(:config :state :cache))
         (list (rule source-root ':read))
         (loop for relative in *agent-sandbox-home-read-paths*
               for path = (merge-pathnames relative home)
@@ -199,14 +204,16 @@ process status: 0, or 1 after explaining why the sandbox is unavailable."
          (directory (and socket
                          (uiop:pathname-directory-pathname socket)))
          (component (and directory
-                         (first (last (pathname-directory directory))))))
+                         (first (last (pathname-directory directory)))))
+         (broker-root (merge-pathnames
+                       "broker/" (autolith-launcher-root :state))))
     (unless (and socket
-                 (uiop:subpathp socket #P"/tmp/")
+                 (uiop:subpathp socket broker-root)
                  (string= (file-namestring socket) "broker.sock")
                  (stringp component)
-                 (<= (length "autolith-broker.") (length component))
-                 (string= component "autolith-broker."
-                          :end1 (length "autolith-broker.")))
+                 (<= (length "session.") (length component))
+                 (string= component "session."
+                          :end1 (length "session.")))
       (error 'agent-sandbox-unavailable
              :message "The credential broker socket directory is invalid."))
     directory))
@@ -235,6 +242,7 @@ Credential-bearing and unrecognized host variables never enter the agent."
                    (format nil "XDG_CACHE_HOME=~A"
                            (string-right-trim "/"
                                               (uiop:native-namestring cache-home)))
+                   "TMPDIR=/tmp"
                    "AUTOLITH_AGENT_SANDBOX=active")))
     (when nix-identity
       (setf bindings

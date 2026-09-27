@@ -98,16 +98,25 @@
            :message "This host cannot run the credential broker."
            :reason ':unsupported))
   (let* ((configuration (broker--configuration))
+         (capability (uiop:getenv *broker-capability-variable*))
          (socket-directory
            (uiop:pathname-directory-pathname socket-pathname))
          (component
-           (first (last (pathname-directory socket-directory)))))
-    (unless (and (uiop:subpathp socket-pathname #P"/tmp/")
+           (first (last (pathname-directory socket-directory))))
+         (broker-root
+           (merge-pathnames "broker/"
+                            (platform-launcher-root *platform* ':state))))
+    (unless (and capability
+                 (= (length capability) 64)
+                 (every (lambda (character)
+                          (find character "0123456789abcdef"))
+                        capability)
+                 (uiop:subpathp socket-pathname broker-root)
                  (string= (file-namestring socket-pathname) "broker.sock")
                  (stringp component)
-                 (<= (length "autolith-broker.") (length component))
-                 (string= component "autolith-broker."
-                          :end1 (length "autolith-broker.")))
+                 (<= (length "session.") (length component))
+                 (string= component "session."
+                          :end1 (length "session.")))
       (error 'broker-server-error
              :message "The broker socket is outside its private runtime directory."
              :reason ':path))
@@ -122,10 +131,11 @@
            (server
              (broker-server-create
               socket-pathname
-              (lambda (request write-frame)
+             (lambda (request write-frame)
                 (broker--handle-request
                  configuration request write-frame
-                 :mcp-service mcp-service)))))
+                 :mcp-service mcp-service))
+              :capability capability)))
       (unwind-protect
            (broker-server-serve server)
         (broker-mcp-service-close mcp-service))))

@@ -14,10 +14,15 @@
        (quicklisp-setup (if (probe-file project-setup)
                            project-setup
                            user-setup)))
-  (unless (probe-file quicklisp-setup)
-    (error "Autolith needs Quicklisp at ~A" quicklisp-setup))
-  (load quicklisp-setup)
-  (uiop:symbol-call '#:ql '#:quickload :cffi :silent t)
+  (asdf:initialize-source-registry
+   `(:source-registry (:tree ,(namestring source-root))
+                      :inherit-configuration))
+  (cond
+    ((probe-file quicklisp-setup)
+     (load quicklisp-setup))
+    ((not (equal (uiop:getenv "AUTOLITH_INSTALLATION_KIND") "nix"))
+     (error "Autolith needs Quicklisp at ~A" quicklisp-setup)))
+  (asdf:load-system :cffi)
   (let ((profile-library-directory
           (merge-pathnames ".guix-profile/lib/" (user-homedir-pathname)))
         (library-directories
@@ -26,6 +31,19 @@
       (pushnew profile-library-directory
                (symbol-value library-directories)
                :test #'equal)))
+  (asdf:clear-system :autolith)
   (asdf:load-asd (merge-pathnames "autolith.asd" source-root))
   (asdf:load-system :autolith)
-  (uiop:symbol-call '#:autolith '#:main (uiop:command-line-arguments)))
+  (let ((arguments (uiop:command-line-arguments)))
+    (cond
+      ((and (= (length arguments) 2)
+            (string= (first arguments) "--autolith-internal-broker"))
+       (funcall (symbol-function (find-symbol "BROKER-RUN" '#:autolith))
+                (pathname (second arguments))))
+      ((and (<= 1 (length arguments) 3)
+            (string= (first arguments) "--autolith-internal-auth"))
+       (funcall (symbol-function
+                 (find-symbol "BROKER-AUTHENTICATE" '#:autolith))
+                (second arguments) (third arguments)))
+      (t
+       (uiop:symbol-call '#:autolith '#:main arguments)))))
