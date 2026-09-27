@@ -388,7 +388,8 @@
   test-broker-protocol)
 
 (define-test-suite broker-server
-  test-broker-server-lifecycle)
+  test-broker-server-lifecycle
+  test-broker-server-capability)
 
 (define-test-suite broker-provider
   test-broker-terminal-approval

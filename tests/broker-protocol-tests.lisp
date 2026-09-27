@@ -5,10 +5,10 @@
 (-> test-broker-protocol () null)
 (defun test-broker-protocol ()
   "Test exact broker envelopes and bounded safe framing."
-  (let* ((request '(:broker-request :version 1
+  (let* ((request '(:broker-request :version 2
                     :operation :provider-turn
                     :target "chatgpt"
-                    :payload "{}"))
+                    :payload "{}" :capability "launch-token"))
          (output (make-in-memory-output-stream)))
     (broker-write-frame output request)
     (test-assert
@@ -18,18 +18,21 @@
               (get-output-stream-sequence output))))
      "broker requests round-trip through bounded framing"))
   (dolist (request
-           (list '(:broker-request :version 2
-                   :operation :provider-turn :target "chatgpt" :payload "{}")
-                 '(:broker-request :version 1
-                   :operation :read-secret :target "chatgpt" :payload "{}")
-                 '(:broker-request :version 1
-                   :operation :provider-turn :target "" :payload "{}")
-                 '(:broker-request :version 1
+           (list '(:broker-request :version 1
                    :operation :provider-turn :target "chatgpt" :payload "{}"
-                   :endpoint "https://example.invalid")
-                 '(:broker-request :version 1
+                   :capability "launch-token")
+                 '(:broker-request :version 2
+                   :operation :read-secret :target "chatgpt" :payload "{}"
+                   :capability "launch-token")
+                 '(:broker-request :version 2
+                   :operation :provider-turn :target "" :payload "{}"
+                   :capability "launch-token")
+                 '(:broker-request :version 2
+                   :operation :provider-turn :target "chatgpt" :payload "{}"
+                   :capability "launch-token" :endpoint "https://example.invalid")
+                 '(:broker-request :version 2
                    :operation :provider-turn :target "chatgpt"
-                   :payload "{}" . :extra)))
+                   :payload "{}" :capability "launch-token" . :extra)))
     (test-assert
      (handler-case
          (progn (broker-request-validate request) nil)
@@ -37,14 +40,14 @@
      "broker rejects an invalid or extended request envelope"))
   (let ((output (make-in-memory-output-stream)))
     (management-repl-write-frame
-     output '(:broker-request :version 1
+     output '(:broker-request :version 2
               :operation :provider-turn :target "chatgpt"
-              :payload "#.(error \"unsafe\")")
+              :payload "#.(error \"unsafe\")" :capability "launch-token")
      4096)
     (test-assert
-     (equal '(:broker-request :version 1
+     (equal '(:broker-request :version 2
               :operation :provider-turn :target "chatgpt"
-              :payload "#.(error \"unsafe\")")
+              :payload "#.(error \"unsafe\")" :capability "launch-token")
             (broker-read-request
              (flexi-streams:make-in-memory-input-stream
               (get-output-stream-sequence output))))
@@ -62,8 +65,9 @@
            nil)
        (broker-protocol-error () t))
      "broker rejects read-time evaluation in an untrusted frame"))
-  (let ((cycle (list ':broker-request ':version 1 ':operation
-                     ':provider-turn ':target "chatgpt" ':payload "{}")))
+  (let ((cycle (list ':broker-request ':version 2 ':operation
+                     ':provider-turn ':target "chatgpt" ':payload "{}"
+                     ':capability "launch-token")))
     (setf (rest (last cycle)) cycle)
     (test-assert
      (handler-case

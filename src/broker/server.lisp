@@ -13,6 +13,12 @@
     :reader broker-server-handler
     :type function
     :documentation "Trusted function called with a validated request and frame writer.")
+   (capability
+    :initarg :capability
+    :initform nil
+    :reader broker-server-capability
+    :type (or null string)
+    :documentation "Per-launch request capability, or NIL for an internal server.")
    (listener
     :initform nil
     :accessor broker-server-listener
@@ -53,10 +59,28 @@
     :documentation "The failed broker socket lifecycle stage."))
   (:documentation "The trusted broker endpoint could not be started safely."))
 
-(-> broker-server-create (pathname function) broker-server)
-(defun broker-server-create (pathname handler)
+(-> broker-server-create (pathname function &key (:capability (or null string))) broker-server)
+(defun broker-server-create (pathname handler &key capability)
   "Create a server for a launch-specific socket and trusted HANDLER."
-  (make-instance 'broker-server :pathname pathname :handler handler))
+  (make-instance 'broker-server :pathname pathname :handler handler
+                 :capability capability))
+
+(-> broker-server--authorized-p (broker-server list) boolean)
+(defun broker-server--authorized-p (server request)
+  "Compare the request capability without ending on the first mismatch."
+  (let ((expected (broker-server-capability server))
+        (provided (getf (rest request) ':capability)))
+    (if (null expected)
+        t
+        (let ((difference (logxor (length expected) (length provided))))
+          (loop for index below (max (length expected) (length provided))
+                do (setf difference
+                         (logior difference
+                                 (logxor (if (< index (length expected))
+                                             (char-code (char expected index)) 0)
+                                         (if (< index (length provided))
+                                             (char-code (char provided index)) 0)))))
+          (zerop difference)))))
 
 (-> broker-server--prepare-path (pathname) null)
 (defun broker-server--prepare-path (pathname)
@@ -120,6 +144,10 @@
               (handler-case
                   (let ((request (broker-read-request stream)))
                     (when request
+                      (unless (broker-server--authorized-p server request)
+                        (error 'broker-protocol-error
+                               :message "The broker request is not authorized."
+                               :reason ':capability))
                       (funcall
                        (broker-server-handler server)
                        request

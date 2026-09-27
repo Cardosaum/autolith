@@ -5,6 +5,9 @@
 (defparameter *broker-socket-variable* "AUTOLITH_BROKER_SOCKET"
   "The trusted broker socket pathname supplied by the stable launcher.")
 
+(defparameter *broker-capability-variable* "AUTOLITH_BROKER_CAPABILITY"
+  "The per-launch capability supplied to the sandboxed agent.")
+
 (define-condition broker-unavailable (autolith-error)
   ((reason
     :initarg :reason
@@ -36,9 +39,11 @@
 
 The function receives a bounded binary stream. It must finish reading before
 returning, because each connection owns exactly one request."
-  (broker-request-validate
-   (list ':broker-request ':version *broker-protocol-version*
-         ':operation operation ':target target ':payload payload))
+  (let ((capability (or (uiop:getenv *broker-capability-variable*) "")))
+    (broker-request-validate
+     (list ':broker-request ':version *broker-protocol-version*
+           ':operation operation ':target target ':payload payload
+           ':capability capability))
   (let ((socket nil)
         (stream nil))
     (unwind-protect
@@ -52,7 +57,8 @@ returning, because each connection owns exactly one request."
                (broker-write-frame
                 stream
                 (list ':broker-request ':version *broker-protocol-version*
-                      ':operation operation ':target target ':payload payload))
+                      ':operation operation ':target target ':payload payload
+                      ':capability capability))
                (funcall response-function stream))
            (broker-protocol-error (condition)
              (error condition))
@@ -63,4 +69,4 @@ returning, because each connection owns exactly one request."
       (when stream
         (ignore-errors (close stream)))
       (when socket
-        (ignore-errors (sb-bsd-sockets:socket-close socket))))))
+        (ignore-errors (sb-bsd-sockets:socket-close socket)))))))

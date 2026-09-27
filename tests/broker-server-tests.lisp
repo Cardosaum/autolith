@@ -96,9 +96,9 @@
                     (progn
                       (broker-write-frame
                        stream
-                       '(:broker-request :version 1
+                       '(:broker-request :version 2
                          :operation :provider-turn
-                         :target "chatgpt" :payload "{}"))
+                         :target "chatgpt" :payload "{}" :capability ""))
                       (test-assert
                        (equal (management-repl-read-frame
                                stream *broker-maximum-frame-size*)
@@ -112,9 +112,9 @@
                     (progn
                       (broker-write-frame
                        stream
-                       '(:broker-request :version 1
+                       '(:broker-request :version 2
                          :operation :read-secret
-                         :target "chatgpt" :payload "{}"))
+                         :target "chatgpt" :payload "{}" :capability ""))
                       (test-assert
                        (equal (management-repl-read-frame
                                stream *broker-maximum-frame-size*)
@@ -126,6 +126,51 @@
         (when thread (join-thread thread))
         (test-assert (null (platform-path-status *platform* pathname))
                      "broker removes its own socket")
+        (platform-delete-directory-tree *platform* root
+                                        :validate t
+                                        :if-does-not-exist ':ignore))))
+  nil)
+
+(-> test-broker-server-capability () null)
+(defun test-broker-server-capability ()
+  "Test that an incorrect launch capability cannot dispatch a request."
+  (with-platform-capability (':local-sockets "broker capability")
+    (let* ((root (platform-make-temporary-directory
+                  *platform* (uiop:temporary-directory) "autolith-broker-auth-"))
+           (pathname (merge-pathnames "broker.sock" root))
+           (calls 0)
+           (server
+             (broker-server-create
+              pathname
+              (lambda (request write-frame)
+                (declare (ignore request))
+                (incf calls)
+                (funcall write-frame '(:broker-result :status :ok)))
+              :capability "correct-launch-capability"))
+           (thread nil))
+      (unwind-protect
+           (progn
+             (broker-server-start server)
+             (setf thread (make-thread
+                           (lambda () (broker-server-serve server))
+                           :name "Broker capability test"))
+             (dolist (case '(("wrong-launch-capability" :failed 0)
+                             ("correct-launch-capability" :ok 1)))
+               (with-test-environment
+                   (("AUTOLITH_BROKER_CAPABILITY" (first case)))
+                 (test-assert
+                  (equal (broker-client-request
+                          ':provider-turn "chatgpt" "{}"
+                          (lambda (stream)
+                            (management-repl-read-frame
+                             stream *broker-maximum-frame-size*))
+                          :socket-pathname pathname)
+                         (list ':broker-result ':status (second case)))
+                  "broker capability selects the response")
+                 (test-assert (= calls (third case))
+                              "an unauthorized request never reaches its handler"))))
+        (broker-server-close server)
+        (when thread (join-thread thread))
         (platform-delete-directory-tree *platform* root
                                         :validate t
                                         :if-does-not-exist ':ignore))))

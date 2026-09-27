@@ -7,7 +7,7 @@
 ;;; before performing any credentialed work. Neither a URL nor a header is an
 ;;; authority granted by this envelope.
 
-(defparameter *broker-protocol-version* 1
+(defparameter *broker-protocol-version* 2
   "The credential broker wire protocol version.")
 
 (defparameter *broker-maximum-frame-size* (* 16 1024 1024)
@@ -35,7 +35,7 @@ The target is an identifier in trusted broker configuration, never a path,
 command, endpoint, header, or credential. The operation handler separately
 validates the bounded payload for its own schema."
   (unless (and (listp request)
-               (eql (ignore-errors (list-length request)) 9)
+               (eql (ignore-errors (list-length request)) 11)
                (eq (first request) ':broker-request)
                (eq (second request) ':version)
                (eql (third request) *broker-protocol-version*)
@@ -49,7 +49,10 @@ validates the bounded payload for its own schema."
                             (find character "-_./")))
                       (seventh request))
                (eq (eighth request) ':payload)
-               (stringp (ninth request)))
+               (stringp (ninth request))
+               (eq (tenth request) ':capability)
+               (stringp (nth 10 request))
+               (<= (length (nth 10 request)) 128))
     (error 'broker-protocol-error
            :message "The broker request has an invalid operation or envelope."
            :reason ':request))
