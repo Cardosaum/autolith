@@ -67,7 +67,7 @@ nix run github:luciusmagn/autolith
 #+END_SRC
 
 The first launch builds Lisp images Autolith needs to launch.
-These images live under =${XDG_DATA_HOME:-~/.local/share}/autolith/nix/images/=}.
+These images live under =${XDG_DATA_HOME:-~/.local/share}/autolith-launcher/nix/images/=.
 
 ** Linux binary release
 
@@ -225,8 +225,8 @@ Inside the sandbox:
   =~/quicklisp= and =~/common-lisp=, and the Codex and Grok logins Autolith
   imports.
 - Autolith may write its workspace, its own directories, and temporary
-  directories. The active and recovery images, the installed runtimes, and a
-  source checkout outside the workspace stay read-only, so a modified
+  directories. The =autolith-launcher= data root and a source checkout
+  outside the workspace stay read-only, so a modified
   Autolith cannot replace what starts it next time.
 - The network is open.
 - Commands run with full access by default, because the sandbox already
@@ -487,9 +487,19 @@ caches below =${XDG_CONFIG_HOME:-~/.config}/autolith/=,
 nonempty absolute paths; invalid values use these defaults. Newly created
 Autolith roots have mode =0700=.
 
+Launcher-owned files live in the sibling
+=${XDG_DATA_HOME:-~/.local/share}/autolith-launcher/= root: active and
+recovery images, installed runtimes, recovery worktrees, release installs,
+Nix images and ASDF cache, and sandbox helpers. Conversations, memories,
+generations, and worker images remain in =autolith/=. Existing launcher
+directories move on the first launch. The installer updates an existing
+=~/.local/bin/autolith= link that points to the old release installation.
+The compatibility migration is scheduled for removal in v0.53.0.
+
 On Windows the same four roots are, unless an absolute XDG variable overrides
 one, =%APPDATA%\autolith\=, =%LOCALAPPDATA%\autolith\data\=,
 =%LOCALAPPDATA%\autolith\state\=, and =%LOCALAPPDATA%\autolith\cache\=.
+The Windows launcher data root is =%LOCALAPPDATA%\autolith-launcher\data\=.
 Private files and directories carry an access control list granting only the
 owner and SYSTEM, which is what mode =0600= and =0700= mean there; a file
 Autolith publishes read-only withholds write access through that list and

@@ -44,6 +44,13 @@ developers, but I consider correct for self-modifiability.
   They live in separate Lisp images and cannot directly modify the agent.
 - *Durable records* live under reasonable XDG folders. This roughly includes
   conversations, memories, agendas, images, and credentials
+- Launcher-owned active and recovery images, installed runtimes, recovery
+  worktrees, releases, Nix images and ASDF cache, and helpers live in the
+  sibling =autolith-launcher= data root. Agent-owned records, generations,
+  and worker images remain in =autolith=. The agent sandbox reads the whole
+  launcher data root without write access and keeps launcher config and state
+  roots hidden. The launcher migrates legacy directories one at a time on
+  first use; this compatibility path is scheduled for removal in v0.53.0.
 - The *recovery image* is a separately built pristine core, which Autolith
   will reboot into in case the current image is FUBAR. Autolith can work
   using the recovery image to either fix figure out the issue with your
