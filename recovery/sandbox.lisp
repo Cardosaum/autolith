@@ -67,8 +67,8 @@ The agent may write its workspace, Autolith's own configuration, data, state,
 and cache roots, and temporary directories. The source root is read-only
 unless it is the workspace itself, the images and runtimes the launcher starts
 are always read-only, and the rest of the home directory is hidden. The
-network stays open, and processes are not isolated, so sessions started from
-different terminals still find each other."
+network stays open. Linux uses a separate process namespace so the agent
+cannot inspect the broker through the host process table."
   (let* ((home (uiop:ensure-directory-pathname (user-homedir-pathname)))
          (workspace (uiop:ensure-directory-pathname workspace))
          (launcher-data-root (autolith-launcher-root :data)))
@@ -85,7 +85,7 @@ different terminals still find each other."
              (cl-exec-sandbox:make-filesystem-rule :kind ':special :path path :access access)))
       (cl-exec-sandbox:make-sandbox-policy
        :network ':enabled
-       :isolate-processes-p nil
+       :isolate-processes-p t
        :workspace-roots (list workspace)
        :protected-metadata-names nil
        :filesystem-rules

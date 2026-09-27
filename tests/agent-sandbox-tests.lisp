@@ -95,6 +95,11 @@ workspace and state, and keeps its images and source read-only."
                               ("XDG_STATE_HOME" nil)
                               ("XDG_CACHE_HOME" nil)
                               ("AUTOLITH_AGENT_SANDBOX" nil))
+        (test-assert
+         (cl-exec-sandbox:sandbox-policy-isolate-processes-p
+          (agent-sandbox-policy :source-root source-root
+                                :workspace workspace))
+         "agent policy isolates Linux processes from the broker")
         (flet ((allowed-p (script)
                  (zerop (nth-value
                          2 (uiop:run-program
