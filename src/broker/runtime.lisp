@@ -51,6 +51,8 @@
     (case operation
       (:provider-turn
        (broker-provider-stream configuration target payload write-frame))
+      (:provider-compaction
+       (broker-provider-compact configuration target payload write-frame))
       (otherwise
        (error 'broker-protocol-error
               :message "The requested broker operation is unavailable."

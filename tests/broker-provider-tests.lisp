@@ -204,3 +204,127 @@
                                           :validate t
                                           :if-does-not-exist ':ignore)))))
   nil))
+
+(-> test-broker-native-compaction () null)
+(defun test-broker-native-compaction ()
+  "Test Codex compaction uses broker credentials and bounded response frames."
+  (with-test-configuration (configuration)
+    (let* ((registration (provider-registration-find "chatgpt"))
+           (model (provider-model-name
+                   (first (provider-registration-models registration))))
+           (payload (json-encode
+                     (json-object
+                      "model" model
+                      "conversation_id" "broker-compaction"
+                      "prompt_cache_key" nil
+                      "turn_state" nil
+                      "force_refresh" *json-decoded-false*
+                      "request" (json-object "model" model))))
+           (frames nil)
+           (credential (make-instance 'oauth-credentials
+                                      :access-token "compaction-secret"
+                                      :refresh-token nil
+                                      :id-token nil
+                                      :account-id "broker-account"
+                                      :expires-at nil
+                                      :source-path #P"/private/tmp/broker-test-auth")))
+      (test-call-with-function-replacements
+       (list
+        (list 'call-with-credentials
+              (lambda (manager function &key force-refresh)
+                (declare (ignore manager force-refresh))
+                (funcall function credential)))
+        (list 'provider-open-native-compaction
+              (lambda (provider request &key credentials conversation)
+                (declare (ignore provider conversation))
+                (test-assert
+                 (and (eq credentials credential)
+                      (json-string= (json-get request "model") model))
+                 "compaction transport receives broker credentials")
+                (values "{\"output\":[]}" 200 nil))))
+       (lambda ()
+         (broker-provider-compact
+          configuration "chatgpt" payload
+          (lambda (frame) (push frame frames)))))
+      (setf frames (nreverse frames))
+      (test-assert
+       (equal frames
+              '((:broker-result :status :open :code 200)
+                (:broker-chunk :text "{\"output\":[]}")
+                (:broker-end)))
+       "broker forwards only the compaction status and body")
+      (test-assert
+       (not (search "compaction-secret"
+                    (with-output-to-string (stream) (prin1 frames stream))))
+       "compaction frames contain no broker credential")))
+  nil)
+
+(-> test-broker-agent-native-compaction () null)
+(defun test-broker-agent-native-compaction ()
+  "Test a sandboxed compaction reads broker output without loading a token."
+  (with-platform-capability (':local-sockets "broker native compaction")
+    (with-test-configuration (configuration)
+      (let* ((registration (provider-registration-find "chatgpt"))
+             (model (provider-model-name
+                     (first (provider-registration-models registration))))
+             (selected (configuration-copy configuration :model model))
+             (provider (provider-create selected :registration registration))
+             (conversation (conversation-create selected))
+             (socket-root
+               (platform-make-temporary-directory
+                *platform* (uiop:temporary-directory)
+                "autolith-broker-compact-"))
+             (socket-pathname (merge-pathnames "broker.sock" socket-root))
+             (captured-operation nil)
+             (captured-body nil)
+             (server
+               (broker-server-create
+                socket-pathname
+                (lambda (request write-frame)
+                  (setf captured-operation
+                        (getf (rest request) ':operation))
+                  (funcall write-frame
+                           '(:broker-result :status :open :code 200))
+                  (funcall write-frame
+                           '(:broker-chunk :text "{\"output\":[]}"))
+                  (funcall write-frame '(:broker-end)))))
+             (thread nil))
+        (unwind-protect
+             (progn
+               (broker-server-start server)
+               (setf thread
+                     (make-thread (lambda () (broker-server-serve server))
+                                  :name "Broker native compaction test"))
+               (with-test-environment
+                   (("AUTOLITH_AGENT_SANDBOX" "active")
+                    ("AUTOLITH_BROKER_SOCKET" (namestring socket-pathname)))
+                 (test-call-with-function-replacements
+                  (list
+                   (list 'call-with-credentials
+                         (lambda (&rest arguments)
+                           (declare (ignore arguments))
+                           (error "Agent tried to load credentials.")))
+                   (list 'provider-native-compaction-request-object
+                         (lambda (&rest arguments)
+                           (declare (ignore arguments))
+                           (json-object "model" model)))
+                   (list 'provider--decode-native-compaction-response
+                         (lambda (provider body &key status headers)
+                           (declare (ignore provider headers))
+                           (setf captured-body
+                                 (list status (read-line body)))
+                           nil)))
+                  (lambda ()
+                    (provider-attempt-native-compaction
+                     provider conversation :tool-namespaces #()))))
+               (test-assert (eq captured-operation ':provider-compaction)
+                            "agent requests broker native compaction")
+               (test-assert
+                (equal captured-body '(200 "{\"output\":[]}"))
+                "agent decodes only the broker compaction body"))
+          (broker-server-close server)
+          (when thread (join-thread thread))
+          (platform-delete-directory-tree *platform* socket-root
+                                          :validate t
+                                          :if-does-not-exist ':ignore)))))
+  nil)

@@ -393,7 +393,9 @@
 (define-test-suite broker-provider
   test-broker-provider-transport
   test-broker-trusted-configuration
-  test-broker-agent-provider-route)
+  test-broker-agent-provider-route
+  test-broker-native-compaction
+  test-broker-agent-native-compaction)
 
 (define-test-suite active-image
   test-active-image-build-record

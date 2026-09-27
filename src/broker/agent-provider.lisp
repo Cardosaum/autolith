@@ -70,3 +70,25 @@
        :goal-context goal-context
        :compaction-p compaction-p)
       (call-next-method)))
+
+(defmethod provider-attempt-native-compaction :around
+    ((provider codex-subscription-provider) (conversation conversation)
+     &key tool-namespaces force-refresh)
+  "Route native compaction through the broker in a sandboxed agent."
+  (if (eq (agent-sandbox-state) ':active)
+      (let ((request (provider-native-compaction-request-object
+                      provider conversation tool-namespaces)))
+        (broker-client-request
+         ':provider-compaction
+         (broker-provider--agent-target provider)
+         (broker-provider--agent-payload
+          provider conversation request force-refresh)
+         (lambda (stream)
+           (multiple-value-bind (body status)
+               (broker-response-open stream)
+             (unless (= status 200)
+               (provider--codex-signal-status-failure
+                provider status :headers nil :raw-body body))
+             (provider--decode-native-compaction-response
+              provider body :status status :headers nil)))))
+      (call-next-method)))

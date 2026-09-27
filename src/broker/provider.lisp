@@ -112,3 +112,30 @@
              (close body))))
        :force-refresh force-refresh)))
   nil)
+
+(-> broker-provider-compact
+    (configuration string string function)
+    null)
+(defun broker-provider-compact (configuration target source write-frame)
+  "Run Codex native compaction using only the broker's credentials."
+  (let ((payload (broker-provider--payload source)))
+    (multiple-value-bind (provider conversation force-refresh)
+        (broker-provider--resolve configuration target payload)
+      (unless (typep provider 'codex-subscription-provider)
+        (error 'broker-protocol-error
+               :message "Native compaction is unavailable for this provider."
+               :reason ':target))
+      (call-with-credentials
+       (provider-credential-manager provider)
+       (lambda (credentials)
+         (multiple-value-bind (body status headers)
+             (provider-open-native-compaction
+              provider (json-get payload "request")
+              :credentials credentials :conversation conversation)
+           (declare (ignore headers))
+           (funcall write-frame
+                    (list ':broker-result ':status ':open ':code status))
+           (with-input-from-string (stream body)
+             (broker-provider--copy-stream stream write-frame))))
+       :force-refresh force-refresh)))
+  nil)
