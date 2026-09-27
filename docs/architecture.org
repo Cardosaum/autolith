@@ -52,6 +52,9 @@ developers, but I consider correct for self-modifiability.
   launcher data root without write access and keeps launcher config and state
   roots hidden. The launcher migrates legacy directories one at a time on
   first use; this compatibility path is scheduled for removal in v0.53.0.
+- The Autolith source checkout is read-only inside the agent sandbox, including
+  when it is the workspace. This keeps launcher and recovery source outside
+  the agent's mutable surface.
 - The launcher starts a separate broker from the immutable active core before
   the mutable agent enters its sandbox. It loads launcher-owned configuration
   and handles inference, native compaction, and model discovery over a private

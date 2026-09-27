@@ -224,9 +224,9 @@ Inside the sandbox:
   data, state, and cache directories, the directories on =PATH=,
   =~/quicklisp= and =~/common-lisp=. The Codex and Grok login files are hidden.
 - Autolith may write its workspace, its own directories, and temporary
-  directories. The =autolith-launcher= data root and a source checkout
-  outside the workspace stay read-only, so a modified
-  Autolith cannot replace what starts it next time.
+  directories. The =autolith-launcher= data root and the Autolith source
+  checkout stay read-only, even when the checkout is the workspace, so a
+  modified Autolith cannot replace what starts it next time.
 - The network is open.
 - The launcher starts a separate credential broker before the agent. Provider
   inference, native compaction, and model discovery pass through its private
