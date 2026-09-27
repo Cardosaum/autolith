@@ -202,6 +202,14 @@
              :kind ':path :path #P"/var/tmp/" :access ':deny))
       nil))
 
+(defmethod platform-agent-sandbox-terminal-rule ((platform posix-platform)
+                                                 pathname)
+  "Deny the host terminal on macOS; Linux supplies a private /dev tree."
+  (declare (ignore platform))
+  (when (uiop:os-macosx-p)
+    (cl-exec-sandbox:make-filesystem-rule
+     :kind ':path :path pathname :access ':deny)))
+
 (-> posix--status (t) platform-file-status)
 (defun posix--status (stat)
   "Return the platform file status described by SB-POSIX STAT."

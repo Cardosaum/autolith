@@ -239,6 +239,16 @@ directory selection as PLATFORM-APPLICATION-ROOT."))
   "Leave temporary policy to platforms that do not run the agent sandbox."
   nil)
 
+(defgeneric platform-agent-sandbox-terminal-rule (platform pathname)
+  (:documentation
+   "Return a host-specific rule hiding the launcher terminal, or NIL when the
+sandbox provides a private device tree."))
+
+(defmethod platform-agent-sandbox-terminal-rule ((platform platform) pathname)
+  "Use the device isolation supplied by platforms without a terminal rule."
+  (declare (ignore pathname))
+  nil)
+
 (defgeneric platform-parse-namestring (platform string)
   (:documentation
    "Parse STRING, a pathname a user or configuration supplied, into a pathname.

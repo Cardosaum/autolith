@@ -165,8 +165,10 @@ workspace and state, and keeps its images and source read-only."
                                                                         source-root)))))
                        "the agent cannot modify a source root outside its workspace")
           (with-test-environment (("AUTOLITH_LAUNCHER_TERMINAL" "/dev/null"))
-            (test-assert (not (allowed-p "cat /dev/null"))
-                         "the agent cannot open the launcher's terminal device"))
+            (when (platform-agent-sandbox-terminal-rule
+                   *platform* #P"/dev/null")
+              (test-assert (not (allowed-p "cat /dev/null"))
+                           "the agent cannot open the launcher's terminal device")))
           (test-assert
            (not (zerop (nth-value
                         2 (uiop:run-program
@@ -425,7 +427,29 @@ workspace and state, and keeps its images and source read-only."
                               :source-root source-root :workspace workspace)
                              nil)
                     (agent-sandbox-unavailable () t))
-                  "a symlink cannot become the agent session directory"))))
+                  "a symlink cannot become the agent session directory"))
+               (with-test-environment
+                   (("XDG_CACHE_HOME"
+                     (agent-sandbox-tests--native
+                      (merge-pathnames "cache/" workspace))))
+                 (test-assert
+                  (handler-case
+                      (progn (agent-sandbox-policy
+                              :source-root source-root :workspace workspace)
+                             nil)
+                    (agent-sandbox-unavailable () t))
+                  "a missing launcher cache inside the workspace fails closed"))
+               (with-test-environment
+                   (("XDG_DATA_HOME"
+                     (agent-sandbox-tests--native
+                      (merge-pathnames "data/" workspace))))
+                 (test-assert
+                  (handler-case
+                      (progn (agent-sandbox-policy
+                              :source-root source-root :workspace workspace)
+                             nil)
+                    (agent-sandbox-unavailable () t))
+                  "a missing launcher data root inside the workspace fails closed"))))
         (let ((status
                 (platform-path-status
                  *platform*

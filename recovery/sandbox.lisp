@@ -72,8 +72,7 @@ the launcher starts are always read-only, and the rest of the home directory
 is hidden. The network stays open. Linux uses a separate process namespace
 so the agent cannot inspect the broker through the host process table."
   (let* ((home (uiop:ensure-directory-pathname (user-homedir-pathname)))
-         (workspace (uiop:ensure-directory-pathname workspace))
-         (launcher-data-root (autolith-launcher-root :data)))
+         (workspace (uiop:ensure-directory-pathname workspace)))
     (when (uiop:subpathp home workspace)
       (error 'agent-sandbox-unavailable
              :message (format nil "Autolith works in ~A, which contains the home directory ~
@@ -108,13 +107,14 @@ so the agent cannot inspect the broker through the host process table."
         (platform-agent-sandbox-temporary-rules *platform*)
         (mapcar (lambda (kind) (rule (autolith-application-root kind) ':write))
                 '(:config :data :state :cache))
-        (list (rule launcher-data-root ':read))
         (when (uiop:getenv "AUTOLITH_BROKER_SOCKET")
           (list (rule (agent-sandbox--broker-directory) ':read)))
         (when (uiop:getenv "AUTOLITH_LAUNCHER_TERMINAL")
-          (list (rule (agent-sandbox--launcher-terminal) ':deny)))
-        (mapcar (lambda (kind) (rule (autolith-launcher-root kind) ':deny))
-                '(:config :state :cache))
+          (let ((terminal-rule
+                  (platform-agent-sandbox-terminal-rule
+                   *platform* (agent-sandbox--launcher-terminal))))
+            (when terminal-rule (list terminal-rule))))
+        (agent-sandbox--launcher-root-rules workspace)
         (list (rule source-root ':read))
         (loop for relative in *agent-sandbox-home-read-paths*
               for path = (merge-pathnames relative home)
@@ -220,6 +220,35 @@ process status: 0, or 1 after explaining why the sandbox is unavailable."
       (error 'agent-sandbox-unavailable
              :message "The credential broker socket directory is invalid."))
     directory))
+
+(serapeum:-> agent-sandbox--launcher-root-rules (pathname) list)
+(defun agent-sandbox--launcher-root-rules (workspace)
+  "Deny existing launcher roots without creating host cleanup obligations.
+
+A missing root is safe only where no agent-writable rule could create it."
+  (let ((writable-roots
+          (append (list workspace (agent-sandbox--temporary-directory))
+                  (mapcar #'autolith-application-root
+                          '(:config :data :state :cache)))))
+    (loop for kind in '(:data :config :state :cache)
+          for root = (autolith-launcher-root kind)
+          for access = (if (eq kind ':data) ':read ':deny)
+          for status = (platform-path-status
+                        *platform*
+                        (pathname (string-right-trim "/" (namestring root))))
+          if (and status
+                  (eq (platform-file-status-kind status) ':directory))
+            collect (cl-exec-sandbox:make-filesystem-rule
+                     :kind ':path :path root :access access)
+          else
+            do (when (or status
+                         (some (lambda (writable)
+                                 (uiop:subpathp root writable))
+                               writable-roots))
+                 (error 'agent-sandbox-unavailable
+                        :message (format nil
+                                         "The launcher ~A root is missing or unsafe inside an agent-writable directory."
+                                         kind))))))
 
 (serapeum:-> agent-sandbox--temporary-directory () pathname)
 (defun agent-sandbox--temporary-directory ()
