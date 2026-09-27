@@ -375,7 +375,18 @@ workspace and state, and keeps its images and source read-only."
                                 :output nil :error-output nil
                                 :ignore-error-status t))))
                 "the agent cannot read another process's temporary credential")
-               (dolist (path (list other-secret linked-secret))
+               (test-assert
+                (not (zerop (nth-value
+                             2 (uiop:run-program
+                                (agent-sandbox-wrap (list "/bin/ls" "/tmp")
+                                                    :source-root source-root
+                                                    :workspace workspace)
+                                :directory workspace
+                                :output nil :error-output nil
+                                :ignore-error-status t))))
+                "the agent cannot list host temporary directory entries")
+               (dolist (path (list other-secret linked-secret
+                                  (platform-truename *platform* secret)))
                  (test-assert
                   (not (zerop (nth-value
                                2 (uiop:run-program
