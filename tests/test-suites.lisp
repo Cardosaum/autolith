@@ -401,6 +401,10 @@
   test-broker-provider-model-discovery
   test-broker-agent-model-discovery)
 
+(define-test-suite broker-mcp
+  test-broker-mcp-policy
+  test-broker-mcp-agent-route)
+
 (define-test-suite active-image
   test-active-image-build-record
   test-image-commit-surface-battery

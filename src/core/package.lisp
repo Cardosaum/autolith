@@ -608,6 +608,7 @@
                 #:mcp-call-result
                 #:mcp-call-result-content
                 #:mcp-call-result-error-p
+                #:mcp-call-result-raw
                 #:mcp-call-result-structured-content
                 #:mcp-client
                 #:mcp-client-call-tool

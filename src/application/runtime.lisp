@@ -653,7 +653,8 @@ model's effort choice to CONFIGURATION--CLONE."
 (defun application--load-extension-configuration
     (configuration &key pristine-p)
   "Load native MCP and executable user configuration for CONFIGURATION."
-  (mcp-configuration-load configuration)
+  (unless (eq (agent-sandbox-state) ':active)
+    (mcp-configuration-load configuration))
   (unless pristine-p
     (user-init-load configuration))
   nil)
@@ -776,9 +777,9 @@ model's effort choice to CONFIGURATION--CLONE."
       (unwind-protect
            (handler-case
                (progn
-                 (mcp-configuration-load configuration)
-                 (unless (application-pristine-p application)
-                   (user-init-load configuration))
+                 (application--load-extension-configuration
+                  configuration
+                  :pristine-p (application-pristine-p application))
                  (setf configuration
                        (provider-bootstrap-configuration configuration))
                  (when old-provider
@@ -983,9 +984,8 @@ newly acquired lease."
                    (application--extension-registry-snapshot))
              (unwind-protect
                   (progn
-                    (mcp-configuration-load preferred-configuration)
-                    (unless pristine-p
-                      (user-init-load preferred-configuration))
+                    (application--load-extension-configuration
+                     preferred-configuration :pristine-p pristine-p)
                     (setf preferred-configuration
                           (provider-bootstrap-configuration
                            preferred-configuration))
@@ -1169,9 +1169,9 @@ newly acquired lease."
                             (progn
                               (configuration-ensure-directories retained-configuration)
                               (conversation-identifier-migrate retained-configuration)
-                              (mcp-configuration-load retained-configuration)
-                              (unless (application-pristine-p application)
-                                (user-init-load retained-configuration))
+                              (application--load-extension-configuration
+                               retained-configuration
+                               :pristine-p (application-pristine-p application))
                               (setf retained-configuration
                                     (provider-bootstrap-configuration
                                      retained-configuration))

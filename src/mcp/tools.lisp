@@ -2468,7 +2468,9 @@ retained value is credential-redacted or projected."
     (values tool-registry (option mcp-manager)))
 (defun mcp-tool-registry-augment (registry configuration)
   "Discover configured MCP servers and add their tools to REGISTRY."
-  (if (null (mcp-server-registrations))
+  (if (eq (agent-sandbox-state) ':active)
+      (values (broker-mcp-agent-register registry) nil)
+      (if (null (mcp-server-registrations))
       (values registry nil)
       (let ((manager (mcp-manager-create configuration)))
         (handler-case
@@ -2480,7 +2482,7 @@ retained value is credential-redacted or projected."
                 (mcp-manager-close manager)
               (serious-condition ()
                 nil))
-            (error cause))))))
+            (error cause)))))))
 
 
 ;;;; -- Managed Connection Policy Boundaries --

@@ -45,8 +45,10 @@
         (load pathname :verbose nil :print nil))))
   nil)
 
-(-> broker--handle-request (configuration list function) null)
-(defun broker--handle-request (configuration request write-frame)
+(-> broker--handle-request
+    (configuration list function &key (:mcp-service broker-mcp-service))
+    null)
+(defun broker--handle-request (configuration request write-frame &key mcp-service)
   "Dispatch one validated request using only trusted broker configuration."
   (let ((operation (getf (rest request) ':operation))
         (target (getf (rest request) ':target))
@@ -58,6 +60,18 @@
        (broker-provider-compact configuration target payload write-frame))
       (:provider-models
        (broker-provider-discover configuration target payload write-frame))
+      (:mcp-discover
+       (unless (string= target "mcp")
+         (error 'broker-protocol-error
+                :message "MCP discovery has an invalid target."
+                :reason ':target))
+       (broker-mcp-discover mcp-service payload write-frame))
+      (:mcp-call
+       (unless (string= target "mcp")
+         (error 'broker-protocol-error
+                :message "MCP calls have an invalid target."
+                :reason ':target))
+       (broker-mcp-call mcp-service payload write-frame))
       (otherwise
        (error 'broker-protocol-error
               :message "The requested broker operation is unavailable."
@@ -86,15 +100,21 @@
              :message "The broker socket is outside its private runtime directory."
              :reason ':path))
     (configuration-ensure-directories configuration)
+    (mcp--registry-restore nil)
     (broker--load-trusted-init configuration)
     (provider-bootstrap-configuration configuration)
-    (let ((*configuration* configuration)
-          (server
-            (broker-server-create
-             socket-pathname
-             (lambda (request write-frame)
-               (broker--handle-request configuration request write-frame)))))
-      (broker-server-serve server)))
+    (let* ((*configuration* configuration)
+           (mcp-service (broker-mcp-service-create configuration))
+           (server
+             (broker-server-create
+              socket-pathname
+              (lambda (request write-frame)
+                (broker--handle-request
+                 configuration request write-frame
+                 :mcp-service mcp-service)))))
+      (unwind-protect
+           (broker-server-serve server)
+        (broker-mcp-service-close mcp-service))))
   nil)
 
 (-> broker-authenticate ((option string) (option string)) null)
