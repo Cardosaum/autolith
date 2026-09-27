@@ -143,6 +143,19 @@ workspace and state, and keeps its images and source read-only."
                                                (quoted (merge-pathnames "README"
                                                                         source-root)))))
                        "the agent cannot modify a source root outside its workspace")
+          (test-assert
+           (not (zerop (nth-value
+                        2 (uiop:run-program
+                           (agent-sandbox-wrap
+                            (list "/bin/sh" "-c"
+                                  (format nil "echo x > ~A"
+                                          (quoted (merge-pathnames "README" source-root))))
+                            :source-root source-root
+                            :workspace source-root)
+                           :directory source-root
+                           :output nil :error-output nil
+                           :ignore-error-status t))))
+           "the agent cannot modify launcher source when it is the workspace")
         (with-test-environment
             (("AUTOLITH_TEST_SECRET" "fixture-host-secret")
              ("OPENAI_API_KEY" "fixture-provider-secret"))
