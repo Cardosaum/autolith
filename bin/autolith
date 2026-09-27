@@ -124,6 +124,7 @@ broker_pid=
 approval_directory=
 approval_socket=
 terminal_relay=
+agent_temporary_directory=
 
 if [[ -t 0 ]]; then
   terminal_state=$(stty -g 2>/dev/null || true)
@@ -175,6 +176,10 @@ finish_launcher()
   fi
   if [[ -n "$recovery_session_pointer" ]]; then
     rm -f -- "$recovery_session_pointer"
+  fi
+  if [[ -n "$agent_temporary_directory" ]]; then
+    rm -rf -- "$agent_temporary_directory"
+    agent_temporary_directory=
   fi
 }
 
@@ -316,6 +321,11 @@ run_agent()
       return $?
       ;;
   esac
+  if [[ -z "$agent_temporary_directory" ]]; then
+    agent_temporary_directory=$(mktemp -d /tmp/autolith-agent.XXXXXX) || return 64
+    chmod 700 "$agent_temporary_directory" || return 64
+    export AUTOLITH_AGENT_TMPDIR=$agent_temporary_directory
+  fi
   start_broker || return 64
   if [[ -n "$approval_socket" ]]; then
     ensure_terminal_relay || return 64

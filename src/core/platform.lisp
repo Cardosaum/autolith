@@ -231,6 +231,14 @@ subdirectories below each root are the same on every host."))
 KIND is :CONFIG, :DATA, :STATE, or :CACHE, with the same XDG and host base
 directory selection as PLATFORM-APPLICATION-ROOT."))
 
+(defgeneric platform-agent-sandbox-temporary-rules (platform)
+  (:documentation
+   "Return host-specific filesystem rules for the agent's temporary space."))
+
+(defmethod platform-agent-sandbox-temporary-rules ((platform platform))
+  "Leave temporary policy to platforms that do not run the agent sandbox."
+  nil)
+
 (defgeneric platform-parse-namestring (platform string)
   (:documentation
    "Parse STRING, a pathname a user or configuration supplied, into a pathname.

@@ -192,6 +192,16 @@
                    (uiop:pathname-parent-directory-pathname
                     (platform-application-root platform kind))))
 
+(defmethod platform-agent-sandbox-temporary-rules ((platform posix-platform))
+  "Hide alternate host temporary trees on macOS."
+  (declare (ignore platform))
+  (if (uiop:os-macosx-p)
+      (list (cl-exec-sandbox:make-filesystem-rule
+             :kind ':special :path ':tmpdir :access ':deny)
+            (cl-exec-sandbox:make-filesystem-rule
+             :kind ':path :path #P"/var/tmp/" :access ':deny))
+      nil))
+
 (-> posix--status (t) platform-file-status)
 (defun posix--status (stat)
   "Return the platform file status described by SB-POSIX STAT."

@@ -92,7 +92,12 @@ workspace and state, and keeps its images and source read-only."
            (user-cache (merge-pathnames ".cache/common-lisp/" home))
            (trusted-cache (merge-pathnames
                            ".cache/autolith-launcher/trusted-source/" home))
-           (agent-cache (merge-pathnames ".cache/autolith/" home)))
+           (agent-cache (merge-pathnames ".cache/autolith/" home))
+           (agent-temporary
+             (platform-make-temporary-directory
+              *platform* #P"/tmp/" "autolith-agent.")))
+      (unwind-protect
+           (progn
       (agent-sandbox-tests--write (merge-pathnames "README" source-root) "source")
       (ensure-directories-exist workspace)
       (ensure-directories-exist state-root)
@@ -108,6 +113,8 @@ workspace and state, and keeps its images and source read-only."
                               ("XDG_DATA_HOME" nil)
                               ("XDG_STATE_HOME" nil)
                               ("XDG_CACHE_HOME" nil)
+                              ("AUTOLITH_AGENT_TMPDIR"
+                               (agent-sandbox-tests--native agent-temporary))
                               ("AUTOLITH_AGENT_SANDBOX" nil))
         (test-assert
          (cl-exec-sandbox:sandbox-policy-isolate-processes-p
@@ -313,6 +320,119 @@ workspace and state, and keeps its images and source read-only."
               (test-assert (not (allowed-p (format nil "echo x > ~A"
                                                    (quoted (merge-pathnames "fasl" nix-cache)))))
                            "the agent cannot write the cache the Nix image builder loads"))))))))
+        (platform-delete-directory-tree *platform* agent-temporary
+                                        :validate t
+                                        :if-does-not-exist ':ignore)))
+  nil)
+
+(-> test-agent-sandbox-host-temporary-secret () null)
+(defun test-agent-sandbox-host-temporary-secret ()
+  "Test that host temporary files outside Autolith are not visible to the agent."
+  (unless (sandbox-supported-p)
+    (test-withheld ':sandbox-backend "host temporary file isolation")
+    (return-from test-agent-sandbox-host-temporary-secret nil))
+  (with-test-configuration (configuration root)
+    (declare (ignore configuration))
+    (let* ((home (merge-pathnames "home/" root))
+           (workspace (merge-pathnames "project/" home))
+           (source-root (merge-pathnames "source/" root))
+           (host-temporary
+             (platform-make-temporary-directory
+              *platform* #P"/tmp/" "autolith-host-secret."))
+           (agent-temporary
+             (platform-make-temporary-directory
+              *platform* #P"/tmp/" "autolith-agent."))
+           (other-agent-temporary
+             (platform-make-temporary-directory
+              *platform* #P"/tmp/" "autolith-agent."))
+           (linked-agent-temporary
+             (platform-make-temporary-directory
+              *platform* #P"/tmp/" "autolith-agent."))
+           (secret (merge-pathnames "credential" host-temporary))
+           (other-secret (merge-pathnames "credential" other-agent-temporary))
+           (linked-secret (merge-pathnames "linked-credential" workspace)))
+      (unwind-protect
+           (progn
+             (ensure-directories-exist workspace)
+             (ensure-directories-exist source-root)
+             (agent-sandbox-tests--write secret "fixture-host-credential")
+             (agent-sandbox-tests--write other-secret "fixture-other-agent-credential")
+             (test-fixture-make-symbolic-link
+              *platform* (namestring secret) (namestring linked-secret))
+             (with-test-environment
+                 (("HOME" (agent-sandbox-tests--native home))
+                  ("AUTOLITH_AGENT_TMPDIR"
+                   (agent-sandbox-tests--native agent-temporary))
+                  ("AUTOLITH_AGENT_SANDBOX" nil))
+               (test-assert
+                (not (zerop (nth-value
+                             2 (uiop:run-program
+                                (agent-sandbox-wrap
+                                 (list "/bin/cat" (namestring secret))
+                                 :source-root source-root
+                                 :workspace workspace)
+                                :directory workspace
+                                :output nil :error-output nil
+                                :ignore-error-status t))))
+                "the agent cannot read another process's temporary credential")
+               (dolist (path (list other-secret linked-secret))
+                 (test-assert
+                  (not (zerop (nth-value
+                               2 (uiop:run-program
+                                  (agent-sandbox-wrap
+                                   (list "/bin/cat" (namestring path))
+                                   :source-root source-root
+                                   :workspace workspace)
+                                  :directory workspace
+                                  :output nil :error-output nil
+                                  :ignore-error-status t))))
+                  (format nil "the agent cannot read a temporary credential through ~A"
+                          path)))
+               (test-assert
+                (zerop (nth-value
+                        2 (uiop:run-program
+                           (agent-sandbox-wrap
+                            (list "/bin/sh" "-c" "echo fixture > \"$TMPDIR/own\"")
+                            :source-root source-root
+                            :workspace workspace)
+                           :directory workspace
+                           :output nil :error-output nil
+                           :ignore-error-status t)))
+                "the agent can write its session temporary directory")
+               (platform-delete-directory-tree
+                *platform* linked-agent-temporary :validate t
+                :if-does-not-exist ':ignore)
+               (test-fixture-make-symbolic-link
+                *platform* (namestring host-temporary)
+                (agent-sandbox-tests--native linked-agent-temporary))
+               (with-test-environment
+                   (("AUTOLITH_AGENT_TMPDIR"
+                     (agent-sandbox-tests--native linked-agent-temporary)))
+                 (test-assert
+                  (handler-case
+                      (progn (agent-sandbox-policy
+                              :source-root source-root :workspace workspace)
+                             nil)
+                    (agent-sandbox-unavailable () t))
+                  "a symlink cannot become the agent session directory"))))
+        (let ((status
+                (platform-path-status
+                 *platform*
+                 (pathname (agent-sandbox-tests--native
+                            linked-agent-temporary)))))
+          (when (and status
+                     (eq (platform-file-status-kind status) ':symbolic-link))
+            (test-fixture-remove-link
+             *platform* (agent-sandbox-tests--native linked-agent-temporary))))
+        (platform-delete-directory-tree *platform* host-temporary
+                                        :validate t
+                                        :if-does-not-exist ':ignore)
+        (platform-delete-directory-tree *platform* other-agent-temporary
+                                        :validate t
+                                        :if-does-not-exist ':ignore)
+        (platform-delete-directory-tree *platform* agent-temporary
+                                        :validate t
+                                        :if-does-not-exist ':ignore))))
   nil)
 
 (-> test-recovery-git-ignores-repository-commands () null)

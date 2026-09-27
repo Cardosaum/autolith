@@ -28,6 +28,7 @@ the user runs Autolith unconfined.")
     "SBCL_HOME" "AUTOLITH_SBCL" "AUTOLITH_SBCL_SOURCE_ROOT"
     "AUTOLITH_SOURCE_ROOT" "AUTOLITH_PROJECT_SETUP"
     "AUTOLITH_BROKER_SOCKET" "AUTOLITH_BROKER_CAPABILITY"
+    "AUTOLITH_AGENT_TMPDIR"
     "AUTOLITH_CRASH_POINTER"
     "AUTOLITH_RECOVERY_SESSION_POINTER" "AUTOLITH_RESTART_POINTER"
     "AUTOLITH_RECOVERED" "AUTOLITH_RECOVERY_CONVERSATION_ID"
@@ -65,11 +66,11 @@ the user runs Autolith unconfined.")
 source at SOURCE-ROOT.
 
 The agent may write its workspace, Autolith's own configuration, data, state,
-and cache roots, and temporary directories. The source root is read-only even
-when it is the workspace, and the images and runtimes the launcher starts
-are always read-only, and the rest of the home directory is hidden. The
-network stays open. Linux uses a separate process namespace so the agent
-cannot inspect the broker through the host process table."
+and cache roots, and its launcher-created session temporary directory. The
+source root is read-only even when it is the workspace. Images and runtimes
+the launcher starts are always read-only, and the rest of the home directory
+is hidden. The network stays open. Linux uses a separate process namespace
+so the agent cannot inspect the broker through the host process table."
   (let* ((home (uiop:ensure-directory-pathname (user-homedir-pathname)))
          (workspace (uiop:ensure-directory-pathname workspace))
          (launcher-data-root (autolith-launcher-root :data)))
@@ -89,7 +90,7 @@ cannot inspect the broker through the host process table."
        :unix-socket-paths
        (when (uiop:getenv "AUTOLITH_BROKER_SOCKET")
          (list (pathname (uiop:getenv "AUTOLITH_BROKER_SOCKET"))))
-       :private-tmp-p t
+       :private-tmp-p nil
        :private-runtime-p t
        :isolate-processes-p t
        :workspace-roots
@@ -102,7 +103,9 @@ cannot inspect the broker through the host process table."
               (special ':home ':deny)
               (special ':search-path ':read)
               (special ':workspace-roots ':write)
-              (special ':slash-tmp ':write))
+              (special ':slash-tmp ':deny)
+              (rule (agent-sandbox--temporary-directory) ':write))
+        (platform-agent-sandbox-temporary-rules *platform*)
         (mapcar (lambda (kind) (rule (autolith-application-root kind) ':write))
                 '(:config :data :state :cache))
         (list (rule launcher-data-root ':read))
@@ -218,6 +221,33 @@ process status: 0, or 1 after explaining why the sandbox is unavailable."
              :message "The credential broker socket directory is invalid."))
     directory))
 
+(serapeum:-> agent-sandbox--temporary-directory () pathname)
+(defun agent-sandbox--temporary-directory ()
+  "Validate the private /tmp directory created for this launcher session."
+  (let* ((value (uiop:getenv "AUTOLITH_AGENT_TMPDIR"))
+         (directory (and value (uiop:ensure-directory-pathname value)))
+         (component (and directory
+                         (first (last (pathname-directory directory)))))
+         (status (and directory
+                      (platform-path-status
+                       *platform*
+                       (pathname (string-right-trim "/" (namestring directory)))))))
+    (unless (and directory
+                 (equal (uiop:pathname-parent-directory-pathname directory)
+                        #P"/tmp/")
+                 (stringp component)
+                 (= (length component) (+ (length "autolith-agent.") 6))
+                 (string= component "autolith-agent."
+                          :end1 (length "autolith-agent."))
+                 (every #'alphanumericp (subseq component
+                                               (length "autolith-agent.")))
+                 status
+                 (eq (platform-file-status-kind status) ':directory)
+                 (platform-file-status-private-p status))
+      (error 'agent-sandbox-unavailable
+             :message "The launcher session temporary directory is invalid."))
+    directory))
+
 (serapeum:-> agent-sandbox--with-environment (list) list)
 (defun agent-sandbox--with-environment (command)
   "Return COMMAND with a small environment and its cache inside the sandbox.
@@ -226,6 +256,7 @@ A Nix installation compiles Autolith's source into AUTOLITH_ASDF_CACHE, which
 its unconfined image builder also loads, so the agent gets its own there too.
 Credential-bearing and unrecognized host variables never enter the agent."
   (let* ((cache-home (agent-sandbox-cache-home))
+         (temporary (agent-sandbox--temporary-directory))
          (nix-cache (uiop:getenv "AUTOLITH_ASDF_CACHE"))
          (nix-identity (and nix-cache
                             (plusp (length nix-cache))
@@ -242,7 +273,9 @@ Credential-bearing and unrecognized host variables never enter the agent."
                    (format nil "XDG_CACHE_HOME=~A"
                            (string-right-trim "/"
                                               (uiop:native-namestring cache-home)))
-                   "TMPDIR=/tmp"
+                   (format nil "TMPDIR=~A"
+                           (string-right-trim "/"
+                                              (uiop:native-namestring temporary)))
                    "AUTOLITH_AGENT_SANDBOX=active")))
     (when nix-identity
       (setf bindings

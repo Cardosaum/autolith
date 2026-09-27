@@ -883,6 +883,10 @@ if [ \"$probe\" = true ]; then
 fi
 printf '%s %s\\n' \"$mode\" \"$*\"
 printf 'SANDBOX=%s WRAPPED=%s\\n' \"${AUTOLITH_AGENT_SANDBOX:-}\" \"${FIXTURE_WRAPPED:-}\"
+printf 'AGENT_TMPDIR=%s\\n' \"${AUTOLITH_AGENT_TMPDIR:-}\"
+if [ -n \"${AUTOLITH_AGENT_TMPDIR:-}\" ] && [ -d \"$AUTOLITH_AGENT_TMPDIR\" ]; then
+  printf 'AGENT_TMPDIR_EXISTS=1\\n'
+fi
 case \" $* \" in
   *\" fixture-update \"*) exit 76 ;;
   *\" fixture-data-failure \"*) exit 1 ;;
@@ -961,10 +965,19 @@ printf '(:ACTIVE-IMAGE :VERSION 1\\n)\\n' > \"$active/manifest.sexp\"
                   (and (zerop status)
                        (search "BROKER --script"
                                (uiop:read-file-string log))
-                       (search "SANDBOX=active WRAPPED=1" output))
+                       (search "SANDBOX=active WRAPPED=1" output)
+                       (search "AGENT_TMPDIR=/tmp/autolith-agent." output)
+                       (search "AGENT_TMPDIR_EXISTS=1" output))
                   (format nil
                           "the launcher wraps the agent with a source-built broker: ~A ~A"
-                          error-output (uiop:read-file-string log))))
+                          error-output (uiop:read-file-string log)))
+                 (let ((marker (search "AGENT_TMPDIR=" output)))
+                   (when marker
+                     (let* ((start (+ marker (length "AGENT_TMPDIR=")))
+                            (end (position #\Newline output :start start))
+                            (directory (subseq output start end)))
+                       (test-assert (not (probe-file directory))
+                                    "the launcher removes the session temporary directory")))))
                (multiple-value-bind (output error-output status)
                    (release-script-tests--run
                     (list (namestring launcher) "--from-source")
