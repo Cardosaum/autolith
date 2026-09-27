@@ -92,3 +92,24 @@
              (provider--decode-native-compaction-response
               provider body :status status :headers nil)))))
       (call-next-method)))
+
+(-> broker-provider--agent-discover (provider-registration) list)
+(defun broker-provider--agent-discover (registration)
+  "Receive bounded model metadata discovered by the trusted broker."
+  (broker-client-request
+   ':provider-models
+   (provider-registration-name registration)
+   ""
+   (lambda (stream)
+     (let ((frame (management-repl-read-frame
+                   stream *broker-maximum-frame-size*)))
+       (unless (and (listp frame)
+                    (eql (ignore-errors (list-length frame)) 5)
+                    (equal (subseq frame 0 4)
+                           '(:broker-result :status :models :models))
+                    (listp (fifth frame))
+                    (<= (length (fifth frame)) 1024))
+         (error 'broker-protocol-error
+                :message "The broker returned invalid model metadata."
+                :reason ':response))
+       (provider--normalize-models (fifth frame) :allow-empty-p t)))))

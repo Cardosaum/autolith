@@ -395,7 +395,9 @@
   test-broker-trusted-configuration
   test-broker-agent-provider-route
   test-broker-native-compaction
-  test-broker-agent-native-compaction)
+  test-broker-agent-native-compaction
+  test-broker-provider-model-discovery
+  test-broker-agent-model-discovery)
 
 (define-test-suite active-image
   test-active-image-build-record

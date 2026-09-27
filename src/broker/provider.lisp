@@ -139,3 +139,28 @@
              (broker-provider--copy-stream stream write-frame))))
        :force-refresh force-refresh)))
   nil)
+
+(-> broker-provider-discover (configuration string string function) null)
+(defun broker-provider-discover (configuration target source write-frame)
+  "Discover one trusted registration's models with broker-owned credentials."
+  (unless (string= source "")
+    (error 'broker-protocol-error
+           :message "Model discovery takes no agent payload."
+           :reason ':payload))
+  (let* ((registration (provider-registration-find target))
+         (discovery (and registration
+                         (provider-registration-model-discovery registration))))
+    (unless discovery
+      (error 'broker-protocol-error
+             :message "The target has no trusted model discovery."
+             :reason ':target))
+    (let ((models (provider--normalize-models
+                   (funcall discovery configuration) :allow-empty-p t)))
+      (when (> (length models) 1024)
+        (error 'broker-protocol-error
+               :message "The discovered model list is too large."
+               :reason ':response))
+      (funcall write-frame
+               (list ':broker-result ':status ':models
+                     ':models (mapcar #'provider--model-cache-form models)))))
+  nil)

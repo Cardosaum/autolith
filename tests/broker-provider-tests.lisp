@@ -328,3 +328,91 @@
                                           :validate t
                                           :if-does-not-exist ':ignore)))))
   nil)
+
+(-> test-broker-provider-model-discovery () null)
+(defun test-broker-provider-model-discovery ()
+  "Test trusted discovery returns only bounded public model metadata."
+  (with-test-configuration (configuration)
+    (let* ((registration (provider-registration-find "openrouter"))
+           (original (provider-registration-model-discovery registration))
+           (frames nil))
+      (unwind-protect
+           (progn
+             (setf (slot-value registration 'model-discovery)
+                   (lambda (trusted-configuration)
+                     (test-assert (eq trusted-configuration configuration)
+                                  "discovery uses broker configuration")
+                     (list (list ':name "fixture-model"
+                                 ':context-window 32000
+                                 ':reasoning-efforts '("low" "high")))))
+             (broker-provider-discover
+              configuration "openrouter" ""
+              (lambda (frame) (push frame frames)))
+             (setf frames (nreverse frames))
+             (test-assert
+              (equal frames
+                     '((:broker-result :status :models :models
+                        ((:name "fixture-model" :description ""
+                          :context-window 32000
+                          :reasoning-efforts ("low" "high"))))))
+              "broker returns model metadata without credentials")
+             (test-assert
+              (handler-case
+                  (progn
+                    (broker-provider-discover
+                     configuration "openrouter" "https://attacker.invalid"
+                     (lambda (frame) (declare (ignore frame))))
+                    nil)
+                (broker-protocol-error () t))
+              "model discovery rejects agent supplied endpoint data"))
+        (setf (slot-value registration 'model-discovery) original))))
+  nil)
+
+(-> test-broker-agent-model-discovery () null)
+(defun test-broker-agent-model-discovery ()
+  "Test a sandboxed agent receives a broker model list over its socket."
+  (with-platform-capability (':local-sockets "broker model discovery")
+    (let* ((registration (provider-registration-find "openrouter"))
+           (socket-root
+             (platform-make-temporary-directory
+              *platform* (uiop:temporary-directory)
+              "autolith-broker-models-"))
+           (socket-pathname (merge-pathnames "broker.sock" socket-root))
+           (captured-request nil)
+           (server
+             (broker-server-create
+              socket-pathname
+              (lambda (request write-frame)
+                (setf captured-request request)
+                (funcall write-frame
+                         '(:broker-result :status :models :models
+                           ((:name "fixture-model" :description ""
+                             :context-window 32000
+                             :reasoning-efforts ("low" "high"))))))))
+           (thread nil))
+      (unwind-protect
+           (progn
+             (broker-server-start server)
+             (setf thread
+                   (make-thread (lambda () (broker-server-serve server))
+                                :name "Broker model discovery test"))
+             (with-test-environment
+                 (("AUTOLITH_BROKER_SOCKET" (namestring socket-pathname)))
+               (let ((models (broker-provider--agent-discover registration)))
+                 (test-assert
+                  (equal (mapcar #'provider-model-name models)
+                         '("fixture-model"))
+                  "agent receives validated model metadata")))
+             (test-assert
+              (and (eq (getf (rest captured-request) ':operation)
+                       ':provider-models)
+                   (string= (getf (rest captured-request) ':target)
+                            "openrouter")
+                   (string= (getf (rest captured-request) ':payload) ""))
+              "agent grants broker no endpoint or credential data"))
+        (broker-server-close server)
+        (when thread (join-thread thread))
+        (platform-delete-directory-tree *platform* socket-root
+                                        :validate t
+                                        :if-does-not-exist ':ignore))))
+  nil)
