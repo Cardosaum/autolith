@@ -211,6 +211,15 @@
                (active-image-probe-record *active-image-build-record*))
               *standard-output*)
              (finish-output *standard-output*))
+            ((and (= (length arguments) 3)
+                  (string= (second arguments) *broker-image-argument*))
+             (unless (active-image-build-record-compatible-p
+                      *active-image-build-record* source-root)
+               (error 'active-image-build-error
+                      :message "The broker image does not match its source."
+                      :stage ':entry
+                      :pathname source-root))
+             (broker-run (pathname (third arguments))))
             ((null source-root)
              (error 'active-image-build-error
                     :message "The preloaded active image needs its source root."

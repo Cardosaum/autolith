@@ -391,7 +391,8 @@
   test-broker-server-lifecycle)
 
 (define-test-suite broker-provider
-  test-broker-provider-transport)
+  test-broker-provider-transport
+  test-broker-trusted-configuration)
 
 (define-test-suite active-image
   test-active-image-build-record

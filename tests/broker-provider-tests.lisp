@@ -83,3 +83,31 @@
          (broker-protocol-error () t))
        "broker rejects an agent-supplied endpoint")))
   nil)
+
+(-> test-broker-trusted-configuration () null)
+(defun test-broker-trusted-configuration ()
+  "Test the broker uses launcher roots and ignores agent initialization."
+  (with-test-configuration (agent root)
+    (let ((config-home (merge-pathnames "config/" root))
+          (data-home (merge-pathnames "data/" root))
+          (state-home (merge-pathnames "state/" root))
+          (cache-home (merge-pathnames "cache/" root)))
+      (with-test-environment
+          (("XDG_CONFIG_HOME" (namestring config-home))
+           ("XDG_DATA_HOME" (namestring data-home))
+           ("XDG_STATE_HOME" (namestring state-home))
+           ("XDG_CACHE_HOME" (namestring cache-home)))
+        (let ((broker (broker--configuration)))
+          (configuration-ensure-directories broker)
+          (test-assert
+           (equal (config :config-root broker)
+                  (platform-launcher-root *platform* ':config))
+           "broker config comes from the launcher root")
+          (test-assert
+           (not (equal (configuration-user-init-path broker)
+                       (configuration-user-init-path agent)))
+           "broker initialization is separate from the agent")
+          (test-assert
+           (null (broker--load-trusted-init broker))
+           "broker starts without executing agent initialization")))))
+  nil)
