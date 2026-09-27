@@ -390,6 +390,9 @@
 (define-test-suite broker-server
   test-broker-server-lifecycle)
 
+(define-test-suite broker-provider
+  test-broker-provider-transport)
+
 (define-test-suite active-image
   test-active-image-build-record
   test-image-commit-surface-battery
