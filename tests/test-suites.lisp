@@ -387,6 +387,9 @@
 (define-test-suite broker-protocol
   test-broker-protocol)
 
+(define-test-suite broker-server
+  test-broker-server-lifecycle)
+
 (define-test-suite active-image
   test-active-image-build-record
   test-image-commit-surface-battery
