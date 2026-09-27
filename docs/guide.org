@@ -233,6 +233,9 @@ Inside the sandbox:
   socket. Stored provider credentials move from the agent state root to the
   hidden =autolith-launcher= state root on first launch. The migration is safe
   to rerun and is scheduled for removal in v0.53.0.
+  Interactive sessions run through a launcher-owned terminal relay, which keeps
+  the real terminal away from the agent. A trusted approval screen requires a
+  fresh code typed in that terminal before a brokered action can proceed.
   Run =autolith auth [PROVIDER] [METHOD]= in the launcher terminal to add or
   renew credentials. The in-session =/auth= command refuses to read credentials
   while the agent sandbox is active. MCP calls still run in the agent process;

@@ -60,6 +60,11 @@ developers, but I consider correct for self-modifiability.
   and handles inference, native compaction, and model discovery over a private
   Unix socket. The sandboxed agent inherits a small non-secret environment and
   cannot read the launcher state root or the Codex and Grok bootstrap files.
+  Interactive launches pass through a trusted PTY relay. The agent owns only
+  the slave terminal; the relay owns the real terminal and a control socket
+  under launcher state. Approval requests clear the real terminal and require
+  a fresh code before the relay returns an allow decision. The sandbox denies
+  the real terminal device path to the agent.
   Stored credentials move individually into launcher state on first launch;
   this migration is scheduled for removal in v0.53.0.
   =autolith auth= runs in that immutable launcher image with an attached
