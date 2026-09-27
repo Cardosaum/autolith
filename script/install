@@ -13,8 +13,51 @@ xdg_base_directory()
 release_base_url=${AUTOLITH_RELEASE_BASE_URL:-https://sh.lambda-symbolics.com/releases}
 release_latest_url=${AUTOLITH_RELEASE_LATEST_URL:-$release_base_url/latest}
 home=${HOME:-}
+[ -n "$home" ] || { printf 'Autolith installation failed: HOME is not set.\n' >&2; exit 1; }
 data_home=$(xdg_base_directory "${XDG_DATA_HOME:-}" "$home/.local/share")
-install_root=${AUTOLITH_INSTALL_ROOT:-$data_home/autolith/installation}
+data_home=${data_home%/}
+[ -n "$data_home" ] || data_home=/
+old_data_root=$data_home/autolith
+new_data_root=$data_home/autolith-launcher
+if [ -L "$old_data_root" ] || [ -L "$new_data_root" ]; then
+  printf 'Autolith installation failed: a data root is a symbolic link.\n' >&2
+  exit 1
+fi
+if [ -d "$old_data_root" ]; then
+  mkdir -p -- "$new_data_root"
+  for name in active recovery runtimes recovery-worktrees installation nix helpers release-images; do
+    source_directory=$old_data_root/$name
+    target_directory=$new_data_root/$name
+    if [ -L "$source_directory" ] || [ -L "$target_directory" ]; then
+      printf 'Autolith installation failed: %s is a symbolic link.\n' "$name" >&2
+      exit 1
+    fi
+    [ -e "$source_directory" ] || continue
+    if [ -e "$target_directory" ]; then
+      printf 'Autolith installation failed: %s exists in both data roots.\n' "$name" >&2
+      exit 1
+    fi
+    mv -- "$source_directory" "$target_directory"
+  done
+  if [ -L "$old_data_root/native" ] || [ -L "$new_data_root/native" ] ||
+     [ -L "$old_data_root/native/sandbox" ] || [ -L "$new_data_root/native/sandbox" ]; then
+    printf 'Autolith installation failed: native sandbox directory is a symbolic link.\n' >&2
+    exit 1
+  fi
+  if [ -e "$old_data_root/native/sandbox" ]; then
+    [ ! -e "$new_data_root/native/sandbox" ] || exit 1
+    mkdir -p -- "$new_data_root/native"
+    mv -- "$old_data_root/native/sandbox" "$new_data_root/native/sandbox"
+  fi
+fi
+legacy_command=${AUTOLITH_BIN_DIR:-$home/.local/bin}/autolith
+if [ -L "$legacy_command" ] &&
+   [ "$(readlink "$legacy_command")" = "$old_data_root/installation/current/bin/autolith" ]; then
+  temporary_command=${legacy_command}.migration.$$
+  ln -s "$new_data_root/installation/current/bin/autolith" "$temporary_command"
+  mv -f -- "$temporary_command" "$legacy_command"
+fi
+install_root=${AUTOLITH_INSTALL_ROOT:-$data_home/autolith-launcher/installation}
 bin_directory=${AUTOLITH_BIN_DIR:-$home/.local/bin}
 requested_tag=
 temporary_root=

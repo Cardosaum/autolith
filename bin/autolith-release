@@ -35,6 +35,18 @@ xdg_base_directory()
 release_latest_url=${AUTOLITH_RELEASE_LATEST_URL:-https://sh.lambda-symbolics.com/releases/latest}
 launcher_path=$(resolve_path "${BASH_SOURCE[0]}")
 release_root=$(CDPATH= cd -P -- "$(dirname -- "$launcher_path")/.." && pwd)
+home=${HOME:-}
+data_home=$(xdg_base_directory "${XDG_DATA_HOME:-}" "$home/.local/share")
+data_home=${data_home%/}
+[ -n "$data_home" ] || data_home=/
+# shellcheck source=../script/migrate-launcher-data
+source "$release_root/libexec/autolith/script/migrate-launcher-data"
+autolith_migrate_launcher_data "$data_home"
+case $release_root in
+  "$data_home/autolith/installation/"*)
+    release_root=$data_home/autolith-launcher/installation/${release_root#"$data_home/autolith/installation/"}
+    ;;
+esac
 release_record=$release_root/RELEASE
 source_root=$release_root/libexec/autolith
 # shellcheck source=../script/launcher-cli.sh
@@ -44,11 +56,10 @@ runtime_root=$release_root/runtime
 runtime_source_root=$release_root/libexec/sbcl-source
 sbcl_command=$runtime_root/bin/sbcl
 sandbox_helper=$release_root/libexec/cl-exec-sandbox-helper
-home=${HOME:-}
-data_home=$(xdg_base_directory "${XDG_DATA_HOME:-}" "$home/.local/share")
-active_core=$data_home/autolith/active/autolith-active.core
-recovery_core=$data_home/autolith/recovery/autolith-recovery.core
-image_marker=$data_home/autolith/release-images
+launcher_data_root=$data_home/autolith-launcher
+active_core=$launcher_data_root/active/autolith-active.core
+recovery_core=$launcher_data_root/recovery/autolith-recovery.core
+image_marker=$launcher_data_root/release-images
 
 fail()
 {

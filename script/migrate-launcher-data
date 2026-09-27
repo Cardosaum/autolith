@@ -1,0 +1,56 @@
+#!/bin/sh
+
+# Remove this compatibility migration in v0.53.0 after releases using the
+# autolith data root for launcher files are no longer supported.
+autolith_migrate_launcher_data()
+{
+  migration_data_home=${1%/}
+  [ -n "$migration_data_home" ] || migration_data_home=/
+  migration_old=$migration_data_home/autolith
+  migration_new=$migration_data_home/autolith-launcher
+
+  if [ -L "$migration_old" ] || [ -L "$migration_new" ]; then
+    printf 'Autolith migration: a data root is a symbolic link.\n' >&2
+    return 1
+  fi
+  if [ -d "$migration_old" ]; then
+    if [ ! -e "$migration_new" ]; then
+      mkdir -m 700 -- "$migration_new" || return 1
+    fi
+    [ -d "$migration_new" ] || return 1
+
+    for migration_name in active recovery runtimes recovery-worktrees installation nix helpers release-images; do
+      migration_source=$migration_old/$migration_name
+      migration_target=$migration_new/$migration_name
+      if [ -L "$migration_source" ] || [ -L "$migration_target" ]; then
+        printf 'Autolith migration: %s is a symbolic link.\n' "$migration_name" >&2
+        return 1
+      fi
+      [ -e "$migration_source" ] || continue
+      if [ -e "$migration_target" ]; then
+        printf 'Autolith migration: %s exists in both data roots.\n' "$migration_name" >&2
+        return 1
+      fi
+      mv -- "$migration_source" "$migration_target" || return 1
+    done
+    if [ -L "$migration_old/native" ] || [ -L "$migration_new/native" ] ||
+       [ -L "$migration_old/native/sandbox" ] || [ -L "$migration_new/native/sandbox" ]; then
+      printf 'Autolith migration: native sandbox directory is a symbolic link.\n' >&2
+      return 1
+    fi
+    if [ -e "$migration_old/native/sandbox" ]; then
+      [ ! -e "$migration_new/native/sandbox" ] || return 1
+      mkdir -p -- "$migration_new/native" || return 1
+      mv -- "$migration_old/native/sandbox" "$migration_new/native/sandbox" || return 1
+    fi
+  fi
+
+  migration_bin=${AUTOLITH_BIN_DIR:-${HOME:-}/.local/bin}
+  migration_command=$migration_bin/autolith
+  if [ -L "$migration_command" ] &&
+     [ "$(readlink "$migration_command")" = "$migration_old/installation/current/bin/autolith" ]; then
+    migration_temporary=$migration_bin/.autolith.migration.$$
+    ln -s "$migration_new/installation/current/bin/autolith" "$migration_temporary" || return 1
+    mv -f -- "$migration_temporary" "$migration_command" || return 1
+  fi
+}
