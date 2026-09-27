@@ -65,10 +65,18 @@
            :message "This host cannot run the credential broker."
            :reason ':unsupported))
   (let* ((configuration (broker--configuration))
-         (launcher-data (config :data-root configuration)))
-    (unless (uiop:subpathp socket-pathname launcher-data)
+         (socket-directory
+           (uiop:pathname-directory-pathname socket-pathname))
+         (component
+           (first (last (pathname-directory socket-directory)))))
+    (unless (and (uiop:subpathp socket-pathname #P"/tmp/")
+                 (string= (file-namestring socket-pathname) "broker.sock")
+                 (stringp component)
+                 (<= (length "autolith-broker.") (length component))
+                 (string= component "autolith-broker."
+                          :end1 (length "autolith-broker.")))
       (error 'broker-server-error
-             :message "The broker socket is outside the launcher data root."
+             :message "The broker socket is outside its private runtime directory."
              :reason ':path))
     (configuration-ensure-directories configuration)
     (broker--load-trusted-init configuration)

@@ -81,6 +81,8 @@ different terminals still find each other."
         (mapcar (lambda (kind) (rule (autolith-application-root kind) ':write))
                 '(:config :data :state :cache))
         (list (rule launcher-data-root ':read))
+        (when (uiop:getenv "AUTOLITH_BROKER_SOCKET")
+          (list (rule (agent-sandbox--broker-directory) ':read)))
         (mapcar (lambda (kind) (rule (autolith-launcher-root kind) ':deny))
                 '(:config :state))
         (unless (uiop:subpathp source-root workspace)
@@ -155,6 +157,26 @@ process status: 0, or 1 after explaining why the sandbox is unavailable."
 
 
 ;;;; -- Private Functions --
+
+(serapeum:-> agent-sandbox--broker-directory () pathname)
+(defun agent-sandbox--broker-directory ()
+  "Return the private launcher-created runtime directory for the broker socket."
+  (let* ((value (uiop:getenv "AUTOLITH_BROKER_SOCKET"))
+         (socket (and value (pathname value)))
+         (directory (and socket
+                         (uiop:pathname-directory-pathname socket)))
+         (component (and directory
+                         (first (last (pathname-directory directory))))))
+    (unless (and socket
+                 (uiop:subpathp socket #P"/tmp/")
+                 (string= (file-namestring socket) "broker.sock")
+                 (stringp component)
+                 (<= (length "autolith-broker.") (length component))
+                 (string= component "autolith-broker."
+                          :end1 (length "autolith-broker.")))
+      (error 'agent-sandbox-unavailable
+             :message "The credential broker socket directory is invalid."))
+    directory))
 
 (serapeum:-> agent-sandbox--with-environment (list) list)
 (defun agent-sandbox--with-environment (command)

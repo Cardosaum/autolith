@@ -143,6 +143,27 @@ workspace and state, and keeps its images and source read-only."
             (test-assert (not (allowed-p (format nil "echo x > ~A"
                                                  (quoted (merge-pathnames "file" target)))))
                          (format nil "the agent cannot write the launcher's ~A" relative))))
+        (let* ((broker-root
+                 (platform-make-temporary-directory
+                  *platform* #P"/tmp/" "autolith-broker."))
+               (broker-socket (merge-pathnames "broker.sock" broker-root)))
+          (unwind-protect
+               (progn
+                 (agent-sandbox-tests--write broker-socket "socket marker")
+                 (with-test-environment
+                     (("AUTOLITH_BROKER_SOCKET"
+                        (agent-sandbox-tests--native broker-socket)))
+                   (test-assert
+                    (allowed-p (format nil "cat ~A" (quoted broker-socket)))
+                    "the agent can reach the broker socket directory")
+                   (test-assert
+                    (not (allowed-p
+                          (format nil "echo replaced > ~A"
+                                  (quoted broker-socket))))
+                    "the agent cannot replace the broker socket")))
+            (platform-delete-directory-tree *platform* broker-root
+                                            :validate t
+                                            :if-does-not-exist ':ignore)))
         (let ((cache-home (output "printf %s \"$XDG_CACHE_HOME\"")))
           (test-assert (uiop:string-prefix-p
                         (agent-sandbox-tests--native

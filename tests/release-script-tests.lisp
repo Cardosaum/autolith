@@ -670,6 +670,7 @@ printf 'subprocess %s\\n' \"$*\" >> \"${AUTOLITH_TEST_EVENT_LOG:?}\"
          (bootstrap (merge-pathnames "bootstrap" script-directory))
          (recovery-source (merge-pathnames "launcher.lisp" recovery-directory))
          (fake-sbcl (merge-pathnames "fake-sbcl" fixture-root))
+         (broker-helper (merge-pathnames "broker-helper.lisp" fixture-root))
          (log (merge-pathnames "launcher.log" fixture-root)))
     (uiop:ensure-all-directories-exist
      (list bin-directory script-directory recovery-directory
@@ -689,10 +690,33 @@ printf 'subprocess %s\\n' \"$*\" >> \"${AUTOLITH_TEST_EVENT_LOG:?}\"
      (format nil "~A  sbcl-2.6.6-source.tar.bz2~%"
              (make-string 64 :initial-element #\0)))
     (release-script-tests--write-file
+     broker-helper
+     "(require :asdf)
+(require :sb-bsd-sockets)
+(let* ((pathname (first (uiop:command-line-arguments)))
+       (socket (make-instance 'sb-bsd-sockets:local-socket :type :stream)))
+  (sb-bsd-sockets:socket-bind socket pathname)
+  (sb-bsd-sockets:socket-listen socket 8)
+  (loop (sleep 1)))
+")
+    (release-script-tests--write-file
      fake-sbcl
      "#!/bin/sh
 set -eu
 case \" $* \" in
+  *\" --autolith-internal-broker \"*)
+    printf 'BROKER %s\\n' \"$*\" >> \"$AUTOLITH_TEST_LOG\"
+    previous=
+    for argument in \"$@\"; do
+      if [ \"$previous\" = --autolith-internal-broker ]; then
+        exec \"$AUTOLITH_TEST_REAL_SBCL\" --noinform --script \\
+          \"$AUTOLITH_TEST_BROKER_HELPER\" \"$argument\" \\
+          2>> \"$AUTOLITH_TEST_LOG\"
+      fi
+      previous=$argument
+    done
+    exit 1
+    ;;
   *\" --agent-sandbox-command \"*)
     if [ -n \"${AUTOLITH_TEST_SANDBOX_FAILURE:-}\" ]; then
       printf 'fixture sandbox unavailable\\n' >&2
@@ -747,6 +771,10 @@ printf '(:ACTIVE-IMAGE :VERSION 1\\n)\\n' > \"$active/manifest.sexp\"
                    (format nil "XDG_DATA_HOME=~A" (namestring data-home))
                    (format nil "XDG_STATE_HOME=~A" (namestring state-home))
                    (format nil "AUTOLITH_SBCL=~A" (namestring fake-sbcl))
+                   (format nil "AUTOLITH_TEST_REAL_SBCL=~A"
+                           (uiop:getenv "AUTOLITH_SBCL"))
+                   (format nil "AUTOLITH_TEST_BROKER_HELPER=~A"
+                           (namestring broker-helper))
                    (format nil "AUTOLITH_TEST_LOG=~A" (namestring log))))
            (source-output
              (release-script-tests--run
@@ -757,14 +785,21 @@ printf '(:ACTIVE-IMAGE :VERSION 1\\n)\\n' > \"$active/manifest.sexp\"
             (not (search "fast startup image" source-output))
             (not (search "--from-source" (uiop:read-file-string log))))
        "--from-source quietly bypasses images and is not forwarded")
+      (release-script-tests--write-file active-core "")
+      (release-script-tests--write-file
+       active-manifest (format nil "(:ACTIVE-IMAGE :VERSION 1~%)~%"))
       (let ((sandboxed-environment
               (cons "AUTOLITH_AGENT_SANDBOX=" (rest environment))))
-        (test-assert
-         (search "SANDBOX=active WRAPPED=1"
-                 (release-script-tests--run
-                  (list (namestring launcher) "--from-source")
-                  :environment sandboxed-environment))
-         "the launcher runs the agent in the command the recovery image wraps")
+        (multiple-value-bind (output error-output status)
+            (release-script-tests--run
+             (list (namestring launcher) "--from-source")
+             :environment sandboxed-environment
+             :ignore-error-status t)
+          (test-assert
+           (and (zerop status)
+                (search "SANDBOX=active WRAPPED=1" output))
+           (format nil "the launcher wraps the agent with a live broker: ~A ~A"
+                   error-output (uiop:read-file-string log))))
         (multiple-value-bind (output error-output status)
             (release-script-tests--run
              (list (namestring launcher) "--from-source")
@@ -774,6 +809,8 @@ printf '(:ACTIVE-IMAGE :VERSION 1\\n)\\n' > \"$active/manifest.sexp\"
                             (not (search "SOURCE" output))
                             (search "fixture sandbox unavailable" error-output))
                        "an unavailable sandbox refuses to start the agent unconfined")))
+      (delete-file active-core)
+      (delete-file active-manifest)
       (let* ((fallback-environment
                (list "AUTOLITH_AGENT_SANDBOX=off"
                      (format nil "HOME=~A" (namestring home))
