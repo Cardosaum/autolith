@@ -24,15 +24,7 @@ function Fail([string]$message) {
   exit 1
 }
 
-function Get-DataRoot {
-  # Mirrors AUTOLITH-APPLICATION-ROOT for :data in script/roots.lisp.
-  $xdg = $env:XDG_DATA_HOME
-  if ($xdg -and ($xdg -match '^([A-Za-z]:[\\/]|\\\\)')) {
-    return (Join-Path $xdg 'autolith')
-  }
-  if (-not $env:LOCALAPPDATA) { Fail 'LOCALAPPDATA is not set.' }
-  return (Join-Path $env:LOCALAPPDATA 'autolith\data')
-}
+. (Join-Path $sourceRoot 'script/migrate-launcher-data.ps1')
 
 function Get-RuntimeVersion([string]$candidate) {
   try {
@@ -149,7 +141,8 @@ if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) { Fail "Lisp scrip
 
 $minimumVersion = (Get-Content -LiteralPath (Join-Path $sourceRoot 'sbcl.version') -Raw).Trim()
 if ($minimumVersion -notmatch '^\d+\.\d+\.\d+$') { Fail 'sbcl.version is malformed.' }
-$runtimesRoot = Join-Path (Get-DataRoot) 'runtimes'
+Move-LegacyLauncherData
+$runtimesRoot = Join-Path (Get-LauncherDataRoot) 'runtimes'
 $runtimeCommandPath = Join-Path $runtimesRoot 'command'
 $managedPrefix = Join-Path (Join-Path $runtimesRoot $runtimeRelease) 'installation'
 $managedSbcl = Join-Path $managedPrefix 'sbcl.exe'

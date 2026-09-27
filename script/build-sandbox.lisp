@@ -23,7 +23,7 @@
   (let* ((system-root (asdf:system-source-directory :cl-exec-sandbox))
          (builder (merge-pathnames "scripts/build-windows-helper.ps1" system-root))
          (installed (merge-pathnames "native/sandbox/cl-exec-sandbox-windows.exe"
-                                     (autolith-application-root ':data)))
+                                     (autolith-launcher-root ':data)))
          (staged (make-pathname :type "new.exe" :defaults installed)))
     (unless (probe-file builder)
       (error "cl-exec-sandbox Windows helper builder is missing at ~A." builder))

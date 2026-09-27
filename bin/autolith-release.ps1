@@ -3,6 +3,19 @@ Set-StrictMode -Version Latest
 
 # The packaged runtime manifest selects UTF-8 for Windows narrow APIs.
 $releaseRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $releaseRoot 'libexec\autolith\script\migrate-launcher-data.ps1')
+$xdg = $env:XDG_DATA_HOME
+if ($xdg -and ($xdg -match '^([A-Za-z]:[\\/]|\\\\)')) {
+  $oldInstallation = Join-Path $xdg 'autolith\installation'
+} else {
+  $oldInstallation = Join-Path $env:LOCALAPPDATA 'autolith\data\installation'
+}
+$oldInstallation = [IO.Path]::GetFullPath($oldInstallation)
+$newInstallation = Join-Path (Get-LauncherDataRoot) 'installation'
+Move-LegacyLauncherData
+if ($releaseRoot.StartsWith("$oldInstallation\", [StringComparison]::OrdinalIgnoreCase)) {
+  $releaseRoot = Join-Path $newInstallation $releaseRoot.Substring($oldInstallation.Length + 1)
+}
 $sourceRoot = Join-Path $releaseRoot 'libexec\autolith'
 $runtime = Join-Path $releaseRoot 'runtime\sbcl.exe'
 $runtimeSource = Join-Path $releaseRoot 'libexec\sbcl-source'
@@ -28,7 +41,7 @@ $env:GIT_OPTIONAL_LOCKS = '0'
 if ($args.Count -gt 0 -and $args[0] -eq '--autolith-release-probe') {
   "version=$($fields.version)"; "tag=$($fields.tag)"; "commit=$($fields.commit)"; "platform=$($fields.platform)"; "source=$sourceRoot"; "runtime=$runtime"; exit 0
 }
-$dataRoot = Join-Path $env:LOCALAPPDATA 'autolith\data'
+$dataRoot = Get-LauncherDataRoot
 $userIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $imageRoot = Join-Path $releaseRoot (Join-Path '.autolith-images' $userIdentity)
 $activeCore = Join-Path $imageRoot 'active\autolith-active.core'

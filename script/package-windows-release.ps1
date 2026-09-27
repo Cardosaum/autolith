@@ -18,7 +18,7 @@ try {
   if ($LASTEXITCODE) { throw 'packaged source Git commit failed.' }
   Add-Content -LiteralPath (Join-Path $packagedSource '.git\info\exclude') -Value '.qlot/'
   Copy-Item -Recurse -Force -LiteralPath (Join-Path $root '.qlot') -Destination (Join-Path $release 'libexec\autolith\.qlot')
-  $version=(Get-Content -Raw (Join-Path $root 'sbcl.version')).Trim(); $data=Join-Path $env:LOCALAPPDATA 'autolith\data'; $runtimeRoot=Join-Path $data "runtimes\$version"
+  $version=(Get-Content -Raw (Join-Path $root 'sbcl.version')).Trim(); $data=Join-Path $env:LOCALAPPDATA 'autolith-launcher\data'; $runtimeRoot=Join-Path $data "runtimes\$version"
   Copy-Item -Recurse -Force -LiteralPath (Join-Path $runtimeRoot 'installation') -Destination (Join-Path $release 'runtime')
   & (Join-Path $PSScriptRoot 'prepare-windows-runtime.ps1') -Runtime (Join-Path $release 'runtime\sbcl.exe')
   Copy-Item -Recurse -Force -LiteralPath (Join-Path $runtimeRoot 'source') -Destination (Join-Path $release 'libexec\sbcl-source')
