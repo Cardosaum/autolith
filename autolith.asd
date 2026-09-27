@@ -194,6 +194,7 @@
                              (:file "management/repl")
                              (:file "broker/protocol")
                              (:file "broker/server")
+                             (:file "broker/client")
                              (:file "application/change-viewer")
                              (:file "application/tool-presentation")
                              (:file "application/change-presentation")

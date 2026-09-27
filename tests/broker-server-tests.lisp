@@ -54,6 +54,17 @@
                      (eq (platform-file-status-kind status) ':socket)
                      (platform-file-status-private-p status))
                 "broker socket is private"))
+             (with-test-environment
+                 (("AUTOLITH_BROKER_SOCKET" (namestring pathname)))
+               (test-assert
+                (equal
+                 (broker-client-request
+                  ':provider-turn "chatgpt" "{}"
+                  (lambda (stream)
+                    (management-repl-read-frame
+                     stream *broker-maximum-frame-size*)))
+                 '(:broker-result :status :ok :target "chatgpt"))
+                "broker client completes a validated request"))
              (multiple-value-bind (socket stream)
                  (broker-server-test--connect pathname)
                (unwind-protect
