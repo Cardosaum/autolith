@@ -600,6 +600,7 @@
   (define-test-suite release-script
     test-build-sandbox-packaged-helpers
     test-installer-checksum-verification
+    test-launcher-data-migration
     test-release-scripts))
 
 (define-test-suite data-transfer
@@ -754,4 +755,3 @@
   test-check-command-selection
   test-check-result-validation
   test-check-process-lifecycle)
-

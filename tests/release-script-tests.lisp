@@ -248,6 +248,9 @@ fi
   (uiop:copy-file
    (merge-pathnames "script/launcher-cli.sh" source-root)
    (merge-pathnames "libexec/autolith/script/launcher-cli.sh" release-root))
+  (uiop:copy-file
+   (merge-pathnames "script/migrate-launcher-data" source-root)
+   (merge-pathnames "libexec/autolith/script/migrate-launcher-data" release-root))
   (release-script-tests--chmod
    "755" (merge-pathnames "libexec/autolith/script/install" release-root))
   (release-script-tests--chmod
@@ -272,6 +275,7 @@ fi
                       "script/build-recovery"
                       "script/check"
                       "script/launcher-cli.sh"
+                      "script/migrate-launcher-data"
                       "script/build-release"
                       "script/build-release-runtime"
                       "script/build-static-release-runtime"
@@ -572,6 +576,82 @@ printf 'subprocess %s\\n' \"$*\" >> \"${AUTOLITH_TEST_EVENT_LOG:?}\"
                events))))
   nil)
 
+(-> release-script-tests--launcher-data-migration (pathname pathname) null)
+(defun release-script-tests--launcher-data-migration (source-root root)
+  "Exercise first run, rerun, partial moves, and inert interior links."
+  (let ((migration (merge-pathnames "script/migrate-launcher-data" source-root)))
+    (labels ((run (data-home home)
+               (release-script-tests--run
+                (list "sh" "-c" ". \"$1\"; autolith_migrate_launcher_data \"$2\""
+                      "migration-test" (namestring migration) (namestring data-home))
+                :environment (list (format nil "HOME=~A" (namestring home)))
+                :ignore-error-status t)))
+      (dolist (case '("fresh" "migrated" "partial" "interior-link"))
+        (let* ((data-home (merge-pathnames (format nil "migration-~A/data/" case) root))
+               (home (merge-pathnames (format nil "migration-~A/home/" case) root))
+               (old (merge-pathnames "autolith/" data-home))
+               (new (merge-pathnames "autolith-launcher/" data-home))
+               (outside (merge-pathnames "outside" home)))
+          (ensure-directories-exist (merge-pathnames "marker" data-home))
+          (ensure-directories-exist (merge-pathnames "marker" home))
+          (cond
+            ((string= case "migrated")
+             (release-script-tests--write-file (merge-pathnames "active/core" new) "new"))
+            ((string= case "partial")
+             (release-script-tests--write-file (merge-pathnames "active/core" new) "new")
+             (release-script-tests--write-file (merge-pathnames "recovery/core" old) "old")
+             (release-script-tests--write-file
+              (merge-pathnames "installation/releases/one/bin/autolith" old) "launcher")
+             (sb-posix:symlink "releases/one"
+                               (namestring (merge-pathnames "installation/current" old)))
+             (let ((command (merge-pathnames ".local/bin/autolith" home)))
+               (ensure-directories-exist command)
+               (sb-posix:symlink
+                (namestring (merge-pathnames "installation/current/bin/autolith" old))
+                (namestring command))))
+            ((string= case "interior-link")
+             (release-script-tests--write-file outside "outside")
+             (ensure-directories-exist (merge-pathnames "active/core" old))
+             (sb-posix:symlink (namestring outside)
+                               (namestring (merge-pathnames "active/outside" old)))))
+          (multiple-value-bind (output error-output status) (run data-home home)
+            (declare (ignore output))
+            (test-assert (zerop status)
+                         (format nil "~A migration succeeds: ~A" case error-output)))
+          (when (string= case "partial")
+            (test-assert (equal (uiop:read-file-string
+                                 (merge-pathnames "recovery/core" new)) "old")
+                         "a partial migration moves the remaining directory")
+            (let ((command (merge-pathnames ".local/bin/autolith" home)))
+              (test-assert
+               (and (equal (sb-posix:readlink (namestring command))
+                           (namestring (merge-pathnames
+                                        "installation/current/bin/autolith" new)))
+                    (equal (uiop:read-file-string command) "launcher"))
+               (format nil "the existing PATH link resolves through the moved installation: ~A"
+                       (sb-posix:readlink (namestring command))))))
+          (when (string= case "interior-link")
+            (test-assert (and (eq (platform-file-status-kind
+                                   (platform-path-status
+                                    *platform* (merge-pathnames "active/outside" new)))
+                                  ':symbolic-link)
+                              (equal (uiop:read-file-string outside) "outside"))
+                         "migration moves an interior link without following it"))
+          (multiple-value-bind (output error-output status) (run data-home home)
+            (declare (ignore output))
+            (test-assert (zerop status)
+                         (format nil "~A migration reruns safely: ~A" case error-output)))))))
+  nil)
+
+(-> test-launcher-data-migration () null)
+(defun test-launcher-data-migration ()
+  "Test migration of launcher data independently of release packaging."
+  (with-test-configuration (configuration root)
+    (declare (ignore configuration))
+    (release-script-tests--launcher-data-migration
+     (asdf:system-source-directory :autolith) root))
+  nil)
+
 (-> release-script-tests--source-launcher (pathname pathname) null)
 (defun release-script-tests--source-launcher (source-root root)
   "Exercise source-image selection, bootstrap prompting, and forced source use."
@@ -582,7 +662,7 @@ printf 'subprocess %s\\n' \"$*\" >> \"${AUTOLITH_TEST_EVENT_LOG:?}\"
          (data-home (merge-pathnames "data/" fixture-root))
          (state-home (merge-pathnames "state/" fixture-root))
          (home (merge-pathnames "home/" fixture-root))
-         (active-directory (merge-pathnames "autolith/active/" data-home))
+         (active-directory (merge-pathnames "autolith-launcher/active/" data-home))
          (active-core (merge-pathnames "autolith-active.core" active-directory))
          (active-manifest (merge-pathnames "manifest.sexp" active-directory))
          (launcher (merge-pathnames "autolith" bin-directory))
@@ -597,6 +677,8 @@ printf 'subprocess %s\\n' \"$*\" >> \"${AUTOLITH_TEST_EVENT_LOG:?}\"
     (uiop:copy-file (merge-pathnames "bin/autolith" source-root) launcher)
     (uiop:copy-file (merge-pathnames "script/launcher-cli.sh" source-root)
                     (merge-pathnames "launcher-cli.sh" script-directory))
+    (uiop:copy-file (merge-pathnames "script/migrate-launcher-data" source-root)
+                    (merge-pathnames "migrate-launcher-data" script-directory))
     (release-script-tests--write-file active-source "")
     (release-script-tests--write-file recovery-source "")
     (release-script-tests--write-file
@@ -653,7 +735,7 @@ esac
      "#!/bin/sh
 set -eu
 printf 'BOOTSTRAP\\n' >> \"$AUTOLITH_TEST_LOG\"
-active=$XDG_DATA_HOME/autolith/active
+active=$XDG_DATA_HOME/autolith-launcher/active
 mkdir -p \"$active\"
 : > \"$active/autolith-active.core\"
 printf '(:ACTIVE-IMAGE :VERSION 1\\n)\\n' > \"$active/manifest.sexp\"
@@ -839,10 +921,12 @@ printf '(:ACTIVE-IMAGE :VERSION 1\\n)\\n' > \"$active/manifest.sexp\"
     (release-script-tests--install-linux-host-tools host-bin)
     (release-script-tests--make-release source-root release-root
                                         :platform "x86_64-linux")
-    (let ((output
-            (release-script-tests--run
-             (list (namestring launcher) "--autolith-release-probe")
-             :environment environment)))
+    (multiple-value-bind (output error-output status)
+        (release-script-tests--run
+         (list (namestring launcher) "--autolith-release-probe")
+         :environment environment :ignore-error-status t)
+      (test-assert (zerop status)
+                   (format nil "release probe starts: ~A" error-output))
       (dolist (line
                (list
                 (format nil "version=~A" *release-script-tests-version*)
@@ -1153,7 +1237,7 @@ esac
       (let* ((fallback-home (merge-pathnames "installer-home/" root))
              (fallback-root
                (merge-pathnames
-                ".local/share/autolith/installation/" fallback-home))
+                ".local/share/autolith-launcher/installation/" fallback-home))
              (fallback-environment
                (append
                 (remove-if
@@ -1531,8 +1615,8 @@ printf 'RUNTIME=%s\\n' \"$*\" >> \"$AUTOLITH_TEST_LOG\"
     (dolist (pathname (list inner-launcher bundled-installer updated-launcher
                             curl))
       (release-script-tests--chmod "755" pathname))
-    (let* ((active-root (merge-pathnames "autolith/active/" data-home))
-           (recovery-root (merge-pathnames "autolith/recovery/" data-home)))
+    (let* ((active-root (merge-pathnames "autolith-launcher/active/" data-home))
+           (recovery-root (merge-pathnames "autolith-launcher/recovery/" data-home)))
       (dolist (pathname (list (merge-pathnames "autolith-active.core" active-root)
                               (merge-pathnames "autolith-recovery.core"
                                                recovery-root)))
@@ -1544,7 +1628,7 @@ printf 'RUNTIME=%s\\n' \"$*\" >> \"$AUTOLITH_TEST_LOG\"
        (merge-pathnames "manifest.sexp" recovery-root)
        "(:RECOVERY-IMAGE :VERSION 3)\n")
       (release-script-tests--write-file
-       (merge-pathnames "autolith/release-images" data-home)
+       (merge-pathnames "autolith-launcher/release-images" data-home)
        (format nil "~A:x86_64-linux~%" tag)))
     (let* ((environment
              (list (format nil "PATH=~A:~A"
@@ -1558,7 +1642,7 @@ printf 'RUNTIME=%s\\n' \"$*\" >> \"$AUTOLITH_TEST_LOG\"
                    "AUTOLITH_SUPPRESS_UPDATE_OFFER="
                    "AUTOLITH_RELEASE_LATEST_URL=https://example.invalid/releases/latest"))
            (current (merge-pathnames "current" install-root))
-           (image-marker (merge-pathnames "autolith/release-images" data-home)))
+           (image-marker (merge-pathnames "autolith-launcher/release-images" data-home)))
       (labels ((select-original ()
                  (sb-posix:unlink (namestring current))
                  (sb-posix:symlink (format nil "releases/~A" tag)
@@ -1737,8 +1821,8 @@ mv -Tf \"$temporary\" \"$AUTOLITH_INSTALL_ROOT/current\"
 ")
     (dolist (pathname (list inner-launcher bundled-installer updated-launcher))
       (release-script-tests--chmod "755" pathname))
-    (let* ((active-root (merge-pathnames "autolith/active/" data-home))
-           (recovery-root (merge-pathnames "autolith/recovery/" data-home)))
+    (let* ((active-root (merge-pathnames "autolith-launcher/active/" data-home))
+           (recovery-root (merge-pathnames "autolith-launcher/recovery/" data-home)))
       (dolist (pathname (list (merge-pathnames "autolith-active.core" active-root)
                               (merge-pathnames "autolith-recovery.core"
                                                recovery-root)))
@@ -1750,7 +1834,7 @@ mv -Tf \"$temporary\" \"$AUTOLITH_INSTALL_ROOT/current\"
        (merge-pathnames "manifest.sexp" recovery-root)
        "(:RECOVERY-IMAGE :VERSION 3)\n")
       (release-script-tests--write-file
-       (merge-pathnames "autolith/release-images" data-home)
+       (merge-pathnames "autolith-launcher/release-images" data-home)
        (format nil "~A:~A~%" tag platform)))
     (release-script-tests--run
      (list (namestring launcher) "resume" "fixture-conversation")
@@ -1797,7 +1881,7 @@ mv -Tf \"$temporary\" \"$AUTOLITH_INSTALL_ROOT/current\"
          (fixture-bin (merge-pathnames "fixture-bin/" fixture-root))
          (data-home (merge-pathnames "data/" fixture-root))
          (log (merge-pathnames "sbcl.log" fixture-root))
-         (marker (merge-pathnames "autolith/release-images" data-home)))
+         (marker (merge-pathnames "autolith-launcher/release-images" data-home)))
     (release-script-tests--make-release
      source-root release-root :platform "x86_64-linux")
     (uiop:ensure-all-directories-exist (list fixture-bin data-home))
@@ -1891,7 +1975,8 @@ esac
      (list bin-directory tools-directory data-home))
     (uiop:copy-file (merge-pathnames "bin/autolith-runtime" source-root)
                     adapter-target)
-    (dolist (name '("runtime-probe.lisp" "runtime-requirement.lisp"))
+    (dolist (name '("runtime-probe.lisp" "runtime-requirement.lisp"
+                    "migrate-launcher-data"))
       (let ((target (merge-pathnames (format nil "script/~A" name) fixture-root)))
         (ensure-directories-exist target)
         (uiop:copy-file (merge-pathnames (format nil "script/~A" name) source-root)
@@ -2011,7 +2096,7 @@ esac
                      "the adapter runs the script on a newer runtime")
         (test-assert
          (probe-file
-          (merge-pathnames "autolith/runtimes/command" data-home))
+          (merge-pathnames "autolith-launcher/runtimes/command" data-home))
          "the adapter records the accepted runtime command"))
       (multiple-value-bind (output status)
           (run-adapter (fake-runtime "2.6.7") :install-p t)
@@ -2020,7 +2105,7 @@ esac
         (test-assert
          (string=
           (uiop:read-file-string
-           (merge-pathnames "autolith/runtimes/2.6.7/source.identity"
+           (merge-pathnames "autolith-launcher/runtimes/2.6.7/source.identity"
                             data-home))
           (format nil "2.6.7 ~A~%"
                   (make-string 64 :initial-element #\1)))
@@ -2028,7 +2113,7 @@ esac
         (test-assert
          (probe-file
           (merge-pathnames
-           "autolith/runtimes/2.6.7/source/src/code/list.lisp"
+           "autolith-launcher/runtimes/2.6.7/source/src/code/list.lisp"
            data-home))
          "the adapter publishes the matching read-only source tree"))
       (multiple-value-bind (output status)
@@ -2040,7 +2125,7 @@ esac
         (test-assert (and (zerop status) (search "ADAPTER-SCRIPT" output))
                      "an untracked newer runtime can bootstrap without managed source"))
       (let ((identity
-              (merge-pathnames "autolith/runtimes/2.6.7/source.identity"
+              (merge-pathnames "autolith-launcher/runtimes/2.6.7/source.identity"
                                data-home)))
         (release-script-tests--chmod "600" identity)
         (release-script-tests--write-file
@@ -3198,32 +3283,33 @@ esac
             (merge-pathnames
              (format nil "autolith-release-script-tests-~A/" (make-identifier))
              (uiop:temporary-directory)))))
-    (unwind-protect
-         (progn
-              (release-script-tests--syntax source-root)
-              (release-script-tests--launcher-preflight source-root)
-              (release-script-tests--update-dispatch)
-              (release-script-tests--models-command)
-              (release-script-tests--bootstrap-dependency-order source-root root)
-              (release-script-tests--darwin-fff-library-path
-               source-root root)
-              (release-script-tests--linux-release-validator source-root root)
-              (release-script-tests--runtime-adapter source-root root)
-              (release-script-tests--runtime-bootstrap source-root root)
-              (release-script-tests--source-launcher source-root root)
-              (release-script-tests--platform-ids)
-              (release-script-tests--archive-helpers root)
-              (release-script-tests--portable-copy root)
-              (release-script-tests--checksum-format root)
-              (release-script-tests--launcher source-root root)
-              (release-script-tests--launcher-darwin source-root root)
-              (release-script-tests--launcher-bsd source-root root)
-              (release-script-tests--update-handoff source-root root)
-              (release-script-tests--musl-update-handoff source-root root)
-              (release-script-tests--image-marker-platform source-root root)
-              (release-script-tests--installer source-root root)
-              (release-script-tests--installer-platform-identity source-root root)
-              (release-script-tests--installer-darwin source-root root)
-              (release-script-tests--installer-bsd source-root root))
-      (release-script-tests--cleanup root)))
+    (with-test-environment
+        (("XDG_DATA_HOME" (namestring (merge-pathnames "data/" root))))
+      (unwind-protect
+           (progn
+             (release-script-tests--syntax source-root)
+             (release-script-tests--launcher-preflight source-root)
+             (release-script-tests--update-dispatch)
+             (release-script-tests--models-command)
+             (release-script-tests--bootstrap-dependency-order source-root root)
+             (release-script-tests--darwin-fff-library-path source-root root)
+             (release-script-tests--linux-release-validator source-root root)
+             (release-script-tests--runtime-adapter source-root root)
+             (release-script-tests--runtime-bootstrap source-root root)
+             (release-script-tests--source-launcher source-root root)
+             (release-script-tests--platform-ids)
+             (release-script-tests--portable-copy root)
+             (release-script-tests--checksum-format root)
+             (release-script-tests--launcher source-root root)
+             (release-script-tests--launcher-darwin source-root root)
+             (release-script-tests--launcher-bsd source-root root)
+             (release-script-tests--update-handoff source-root root)
+             (release-script-tests--musl-update-handoff source-root root)
+             (release-script-tests--image-marker-platform source-root root)
+             (release-script-tests--installer source-root root)
+             (release-script-tests--installer-platform-identity source-root root)
+             (release-script-tests--installer-darwin source-root root)
+             (release-script-tests--installer-bsd source-root root)
+             (release-script-tests--archive-helpers root))
+        (release-script-tests--cleanup root))))
   nil)
