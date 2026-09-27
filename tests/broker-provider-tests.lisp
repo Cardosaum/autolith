@@ -2,6 +2,74 @@
 
 ;;;; -- Trusted Provider Transport Tests --
 
+(-> test-broker-terminal-approval () null)
+(defun test-broker-terminal-approval ()
+  "Test a broker prompt reaches only the private trusted terminal endpoint."
+  (with-test-configuration (configuration root)
+    (declare (ignore configuration root))
+    (let ((state-home
+            (platform-make-temporary-directory *platform* #P"/tmp/" "approval.")))
+      (unwind-protect
+           (with-test-environment (("XDG_STATE_HOME" (namestring state-home)))
+        (let* ((launcher-state (platform-launcher-root *platform* ':state))
+               (directory (merge-pathnames "approval/session.test/" launcher-state))
+               (socket-path (merge-pathnames "control.sock" directory))
+               (listener nil)
+               (worker nil)
+               (received nil))
+          (ensure-directories-exist directory)
+          (sb-posix:chmod (namestring launcher-state) #o700)
+          (sb-posix:chmod (namestring (merge-pathnames "approval/" launcher-state))
+                          #o700)
+          (sb-posix:chmod (namestring directory) #o700)
+          (unwind-protect
+               (progn
+                 (setf listener (platform-local-listener *platform* socket-path))
+                 (setf worker
+                       (make-thread
+                        (lambda ()
+                          (let* ((socket (sb-bsd-sockets:socket-accept listener))
+                                 (stream (sb-bsd-sockets:socket-make-stream
+                                          socket :input t :output t
+                                          :element-type '(unsigned-byte 8)
+                                          :buffering ':none)))
+                            (unwind-protect
+                                 (let ((length 0))
+                                   (dotimes (index 4)
+                                     (setf length
+                                           (+ (ash length 8) (read-byte stream))))
+                                   (let ((bytes (make-array length
+                                                            :element-type '(unsigned-byte 8))))
+                                     (read-sequence bytes stream)
+                                     (setf received
+                                           (sb-ext:octets-to-string
+                                            bytes :external-format ':utf-8)))
+                                   (write-byte (char-code #\1) stream)
+                                   (finish-output stream))
+                              (close stream)
+                              (sb-bsd-sockets:socket-close socket))))
+                        :name "Broker approval fixture"))
+                 (with-test-environment
+                     (("AUTOLITH_BROKER_APPROVAL_SOCKET" (namestring socket-path)))
+                   (test-assert (broker-terminal-approve "Fixture database query")
+                                "the private relay can approve the exact action")
+                   (test-assert (string= received "Fixture database query")
+                                "the relay receives the complete action")
+                   (test-assert
+                    (not (broker-terminal-approve
+                          (make-string (1+ *broker-approval-maximum-bytes*)
+                                       :initial-element #\x)))
+                    "an action too large to display is denied")))
+            (when listener
+              (ignore-errors (sb-bsd-sockets:socket-close listener)))
+            (when worker
+              (ignore-errors (join-thread worker)))
+            (when (probe-file socket-path)
+              (delete-file socket-path)))))
+        (platform-delete-directory-tree *platform* state-home
+                                        :validate t :if-does-not-exist ':ignore))))
+  nil)
+
 (-> test-broker-provider-transport () null)
 (defun test-broker-provider-transport ()
   "Test trusted provider selection, credential scope, and streamed output."

@@ -391,6 +391,7 @@
   test-broker-server-lifecycle)
 
 (define-test-suite broker-provider
+  test-broker-terminal-approval
   test-broker-provider-transport
   test-broker-trusted-configuration
   test-broker-agent-credential-denial

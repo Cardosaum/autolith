@@ -197,6 +197,7 @@
                              (:file "broker/client")
                              (:file "broker/response-stream")
                              (:file "broker/provider")
+                             (:file "broker/approval")
                              (:file "broker/runtime")
                              (:file "broker/agent-provider")
                              (:file "application/change-viewer")
