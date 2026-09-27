@@ -230,16 +230,38 @@ Inside the sandbox:
 - The network is open.
 - The launcher starts a separate credential broker before the agent. Provider
   inference, native compaction, and model discovery pass through its private
-  socket. Stored provider credentials move from the agent state root to the
-  hidden =autolith-launcher= state root on first launch. The migration is safe
-  to rerun and is scheduled for removal in v0.53.0.
+  socket. MCP servers and launcher-defined tools also run in the broker. Each
+  launch has a separate request capability, and the broker checks it before
+  dispatch. The macOS sandbox permits only its broker Unix socket. Linux gives
+  the agent private =/tmp=, =/run=, and =/var/tmp= trees and mounts its broker
+  socket into that view.
+  Stored provider credentials move from the agent state root to the hidden
+  =autolith-launcher= state root on first launch. The global =mcp.sexp= moves
+  from the agent config root to the hidden launcher config root. Both
+  migrations are safe to rerun and are scheduled for removal in v0.53.0.
   Interactive sessions run through a launcher-owned terminal relay, which keeps
   the real terminal away from the agent. A trusted approval screen requires a
   fresh code typed in that terminal before a brokered action can proceed.
   Run =autolith auth [PROVIDER] [METHOD]= in the launcher terminal to add or
   renew credentials. The in-session =/auth= command refuses to read credentials
-  while the agent sandbox is active. MCP calls still run in the agent process;
-  this broker boundary does not yet protect credentials used by them.
+  while the agent sandbox is active. The broker and launcher authentication
+  start from protected source with a launcher-only compiler cache, so changes
+  to the agent's active image do not change either trusted entry.
+- Put credentialed MCP registrations in
+  =$XDG_CONFIG_HOME/autolith-launcher/mcp.sexp= or the launcher's private
+  =init.lisp=. The broker owns their transports and stored credentials. MCP
+  tools marked as trusted read-only can run automatically under =:read-only=
+  policy; other calls ask through the launcher terminal. MCP registrations in
+  the agent's own configuration and project directories are not loaded inside
+  the agent sandbox.
+- A private launcher =init.lisp= may call =register-broker-tool= with a fixed
+  namespace and name, description, JSON schema, handler, approval policy, and
+  credential variable names. For example, a registered =db.query= handler can
+  perform a database query with a credential available only in the broker.
+  The handler receives the agent's JSON argument object, validates the query,
+  and returns text. =:prompt= is the default policy; =:allow= must be chosen
+  explicitly for a trusted automatic operation. The broker redacts the named
+  credential values from returned text. A denial never calls the handler.
 - Commands run with full access by default, because the sandbox already
   confines them. Choose =/permissions ask= or =/permissions auto= to be
   asked instead; the choice persists. There is no separate =sandbox= choice.

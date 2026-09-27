@@ -55,10 +55,14 @@ developers, but I consider correct for self-modifiability.
 - The Autolith source checkout is read-only inside the agent sandbox, including
   when it is the workspace. This keeps launcher and recovery source outside
   the agent's mutable surface.
-- The launcher starts a separate broker from the immutable active core before
+- The launcher starts a separate broker from protected source before
   the mutable agent enters its sandbox. It loads launcher-owned configuration
   and handles inference, native compaction, and model discovery over a private
-  Unix socket. The sandboxed agent inherits a small non-secret environment and
+  Unix socket. The sandboxed agent inherits a small environment containing a
+  per-launch broker capability but no host credentials. The broker checks the
+  capability before dispatching any request. macOS permits the exact broker
+  Unix socket and IP networking; Linux hides host sockets under =/tmp=, =/run=,
+  and =/var/tmp= while binding the broker socket into the agent view. The agent
   cannot read the launcher state root or the Codex and Grok bootstrap files.
   Interactive launches pass through a trusted PTY relay. The agent owns only
   the slave terminal; the relay owns the real terminal and a control socket
@@ -66,11 +70,14 @@ developers, but I consider correct for self-modifiability.
   a fresh code before the relay returns an allow decision. The sandbox denies
   the real terminal device path to the agent.
   Stored credentials move individually into launcher state on first launch;
-  this migration is scheduled for removal in v0.53.0.
-  =autolith auth= runs in that immutable launcher image with an attached
-  terminal. The sandboxed agent refuses direct credential scopes and
-  interactive authentication. MCP transports remain agent-side, so this is
-  not yet a hostile-code credential guarantee.
+  global MCP configuration moves into launcher config. These migrations are
+  scheduled for removal in v0.53.0. =autolith auth= loads protected source
+  with a launcher-only compiler cache and an attached terminal. The sandboxed
+  agent refuses direct credential scopes and interactive authentication.
+  Broker-owned MCP clients and trusted launcher tool handlers receive exact
+  agent requests over the private socket; their authorization decisions run
+  in the broker and use the trusted terminal relay for prompts. The agent
+  holds only schemas and proxy tools, never MCP transport credentials.
 - The *recovery image* is a separately built pristine core, which Autolith
   will reboot into in case the current image is FUBAR. Autolith can work
   using the recovery image to either fix figure out the issue with your
