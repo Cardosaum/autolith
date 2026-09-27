@@ -18,9 +18,8 @@ inside the sandbox, so nested launches are not wrapped again, or \"off\" when
 the user runs Autolith unconfined.")
 
 (defparameter *agent-sandbox-home-read-paths*
-  '("quicklisp/" "common-lisp/" ".codex/auth.json" ".grok/auth.json")
-  "Paths below the home directory the agent reads: its Lisp dependency
-stores, and the provider logins it imports until the launcher brokers them.")
+  '("quicklisp/" "common-lisp/")
+  "Lisp dependency stores below the home directory that the agent reads.")
 
 (defparameter *agent-sandbox-passthrough-variables*
   '("HOME" "USER" "LOGNAME" "SHELL" "PATH" "TMPDIR"

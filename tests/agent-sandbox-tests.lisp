@@ -71,6 +71,10 @@ workspace and state, and keeps its images and source read-only."
            (source-root (merge-pathnames "autolith/" home))
            (secret (agent-sandbox-tests--write (merge-pathnames ".ssh/id_ed25519" home)
                                                "secret"))
+           (codex-auth (agent-sandbox-tests--write
+                        (merge-pathnames ".codex/auth.json" home) "codex-secret"))
+           (grok-auth (agent-sandbox-tests--write
+                       (merge-pathnames ".grok/auth.json" home) "grok-secret"))
            (state-root (merge-pathnames ".local/state/autolith/" home))
            (data-root (merge-pathnames ".local/share/autolith/" home))
            (active (merge-pathnames ".local/share/autolith-launcher/active/" home))
@@ -111,6 +115,10 @@ workspace and state, and keeps its images and source read-only."
                  (uiop:escape-sh-token (agent-sandbox-tests--native pathname))))
           (test-assert (not (allowed-p (format nil "cat ~A" (quoted secret))))
                        "the agent cannot read the hidden home directory")
+          (dolist (credential (list codex-auth grok-auth))
+            (test-assert
+             (not (allowed-p (format nil "cat ~A" (quoted credential))))
+             "the agent cannot read a provider bootstrap login"))
           (test-assert (allowed-p (format nil "echo made > ~A"
                                           (quoted (merge-pathnames "made" workspace))))
                        "the agent writes its workspace")
