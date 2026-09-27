@@ -384,6 +384,9 @@
   test-management-repl-start-failure-atomic
   test-management-repl-tcp-lifecycle)
 
+(define-test-suite broker-protocol
+  test-broker-protocol)
+
 (define-test-suite active-image
   test-active-image-build-record
   test-image-commit-surface-battery
