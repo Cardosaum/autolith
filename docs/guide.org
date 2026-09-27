@@ -233,8 +233,10 @@ Inside the sandbox:
   socket. Stored provider credentials move from the agent state root to the
   hidden =autolith-launcher= state root on first launch. The migration is safe
   to rerun and is scheduled for removal in v0.53.0.
-  Interactive authentication and MCP calls still run in the agent process;
-  this broker boundary does not yet protect credentials entered through them.
+  Run =autolith auth [PROVIDER] [METHOD]= in the launcher terminal to add or
+  renew credentials. The in-session =/auth= command refuses to read credentials
+  while the agent sandbox is active. MCP calls still run in the agent process;
+  this broker boundary does not yet protect credentials used by them.
 - Commands run with full access by default, because the sandbox already
   confines them. Choose =/permissions ask= or =/permissions auto= to be
   asked instead; the choice persists. There is no separate =sandbox= choice.
@@ -864,8 +866,8 @@ stable namespace names and descriptions up front, marks each function
 =defer_loading=true=, and lets the provider expose matching schemas only when
 needed. Other models and providers receive the complete eager tool array.
 
-Authenticate Gemini with =autolith auth gemini=, =/auth gemini=, or
-=(auth "gemini")=. Autolith stores its Google OAuth credentials separately at
+Authenticate Gemini with =autolith auth gemini= from the launcher terminal.
+Autolith stores its Google OAuth credentials separately at
 =gemini-auth.sexp= under the launcher state root. The provider uses the Gemini CLI Code
 Assist subscription service directly, including streaming text and thinking,
 tool calls, token usage, account onboarding, and managed companion projects.

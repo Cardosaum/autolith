@@ -59,8 +59,10 @@ developers, but I consider correct for self-modifiability.
   cannot read the launcher state root or the Codex and Grok bootstrap files.
   Stored credentials move individually into launcher state on first launch;
   this migration is scheduled for removal in v0.53.0.
-  Interactive authentication and MCP transports remain agent-side at this
-  point, so the process boundary is not a hostile-code credential guarantee.
+  =autolith auth= runs in that immutable launcher image with an attached
+  terminal. The sandboxed agent refuses direct credential scopes and
+  interactive authentication. MCP transports remain agent-side, so this is
+  not yet a hostile-code credential guarantee.
 - The *recovery image* is a separately built pristine core, which Autolith
   will reboot into in case the current image is FUBAR. Autolith can work
   using the recovery image to either fix figure out the issue with your
