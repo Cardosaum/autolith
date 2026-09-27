@@ -64,7 +64,8 @@ developers, but I consider correct for self-modifiability.
   Unix socket and IP networking; Linux hides host sockets under =/run= and
   =/var/tmp= while binding the broker socket into the agent view. Both hosts
   deny the rest of =/tmp= and grant one launcher-created session directory.
-  The launcher removes that directory when the session exits. The agent
+  Linux also supplies a private =/dev= tree, so the host terminal is absent.
+  The launcher removes the session directory when it exits. The agent
   cannot read the launcher state root or the Codex and Grok bootstrap files.
   Interactive launches pass through a trusted PTY relay. The agent owns only
   the slave terminal; the relay owns the real terminal and a control socket

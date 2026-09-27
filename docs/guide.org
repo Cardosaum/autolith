@@ -229,6 +229,8 @@ Inside the sandbox:
   session directory when it exits. The =autolith-launcher= data root and the
   Autolith source checkout stay read-only, even when the checkout is the
   workspace, so a modified Autolith cannot replace what starts it next time.
+  If a custom XDG location puts a missing launcher root inside the writable
+  workspace, startup stops until that root is created outside the sandbox.
 - The network is open.
 - The launcher starts a separate credential broker before the agent. Provider
   inference, native compaction, and model discovery pass through its private
