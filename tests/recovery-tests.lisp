@@ -99,6 +99,10 @@
                    (data-root (platform-application-root *platform* ':data))
                    (state-root (platform-application-root *platform* ':state)))
                (test-assert
+                (equal (platform-launcher-root *platform* ':data)
+                       (autolith-launcher-root :data))
+                "platform and script launcher roots agree")
+               (test-assert
                 (equal (recovery-context-generation-root context)
                        (merge-pathnames "generations/" data-root))
                 "recovery ignores an invalid XDG data home")

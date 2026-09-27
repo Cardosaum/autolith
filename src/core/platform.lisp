@@ -224,6 +224,13 @@ XDG_DATA_HOME, XDG_STATE_HOME, or XDG_CACHE_HOME variable places the root under
 that base on every host; otherwise the host convention applies. The
 subdirectories below each root are the same on every host."))
 
+(defgeneric platform-launcher-root (platform kind)
+  (:documentation
+   "Return the launcher's per-user directory of KIND beside the Autolith root.
+
+KIND is :CONFIG, :DATA, :STATE, or :CACHE, with the same XDG and host base
+directory selection as PLATFORM-APPLICATION-ROOT."))
+
 (defgeneric platform-parse-namestring (platform string)
   (:documentation
    "Parse STRING, a pathname a user or configuration supplied, into a pathname.

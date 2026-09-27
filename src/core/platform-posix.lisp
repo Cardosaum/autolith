@@ -186,6 +186,12 @@
         (posix--environment-directory "XDG_CACHE_HOME"
                                       (merge-pathnames ".cache/" home)))))))
 
+(defmethod platform-launcher-root ((platform posix-platform) kind)
+  "Place launcher files beside the Autolith root in the selected XDG base."
+  (merge-pathnames "autolith-launcher/"
+                   (uiop:pathname-parent-directory-pathname
+                    (platform-application-root platform kind))))
+
 (-> posix--status (t) platform-file-status)
 (defun posix--status (stat)
   "Return the platform file status described by SB-POSIX STAT."

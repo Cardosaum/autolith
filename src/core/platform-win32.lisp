@@ -1000,6 +1000,20 @@ state, and cache under the local one, each in its own subdirectory."
            (merge-pathnames "autolith/" xdg)
            (merge-pathnames "autolith/cache/" (win32--known-folder "LOCALAPPDATA")))))))
 
+(defmethod platform-launcher-root ((platform win32-platform) kind)
+  "Place launcher files beside the Autolith root in the selected host base."
+  (let* ((variable (ecase kind
+                     (:config "XDG_CONFIG_HOME")
+                     (:data "XDG_DATA_HOME")
+                     (:state "XDG_STATE_HOME")
+                     (:cache "XDG_CACHE_HOME")))
+         (xdg (win32--absolute-environment-directory variable)))
+    (if xdg
+        (merge-pathnames "autolith-launcher/" xdg)
+        (merge-pathnames (format nil "autolith-launcher/~(~A~)/" kind)
+                         (win32--known-folder
+                          (if (eq kind :config) "APPDATA" "LOCALAPPDATA"))))))
+
 (-> win32--filetime->seconds (integer) integer)
 (defun win32--filetime->seconds (filetime)
   "Return FILETIME as whole seconds, the resolution compared across observations."

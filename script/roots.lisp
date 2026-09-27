@@ -125,3 +125,20 @@ next build performs."
                                            (:state ".local/state/")
                                            (:cache ".cache/"))
                                          (user-homedir-pathname)))))))
+
+(defun autolith-launcher-root (kind)
+  "Return the launcher's per-user directory of KIND beside Autolith's root."
+  (let ((application-root (autolith-application-root kind)))
+    (if (and (uiop:os-windows-p)
+             (not (autolith-script-environment-directory
+                   (ecase kind
+                     (:config "XDG_CONFIG_HOME")
+                     (:data "XDG_DATA_HOME")
+                     (:state "XDG_STATE_HOME")
+                     (:cache "XDG_CACHE_HOME")))))
+        (merge-pathnames (format nil "autolith-launcher/~(~A~)/" kind)
+                         (if (eq kind :config)
+                             (autolith-script-known-folder "APPDATA")
+                             (autolith-script-known-folder "LOCALAPPDATA")))
+        (merge-pathnames "autolith-launcher/"
+                         (uiop:pathname-parent-directory-pathname application-root)))))
