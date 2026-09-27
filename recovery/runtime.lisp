@@ -144,12 +144,13 @@ the library that reads a generation owns only the fields every host shares."
 (defun recovery-context-create (source-root)
   "Return recovery context rooted at SOURCE-ROOT and XDG user directories."
   (let* ((data-root (autolith-application-root :data))
+         (launcher-root (autolith-launcher-root :data))
          (state-root (autolith-application-root :state)))
     (make-instance
      'recovery-context
      :source-root (uiop:ensure-directory-pathname source-root)
      :generation-root (merge-pathnames "generations/" data-root)
-     :worktree-root (merge-pathnames "recovery-worktrees/" data-root)
+     :worktree-root (merge-pathnames "recovery-worktrees/" launcher-root)
      :state-root state-root
      :current-pathname (merge-pathnames "current-generation.sexp" state-root))))
 

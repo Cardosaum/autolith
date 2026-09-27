@@ -246,7 +246,7 @@
          (version-pathname (merge-pathnames "sbcl.version" source-root))
          (checksums-pathname (merge-pathnames "sbcl-source-releases.sha256" source-root))
          (version (lisp-implementation-version))
-         (runtimes-root (merge-pathnames "runtimes/" (autolith-application-root :data)))
+         (runtimes-root (merge-pathnames "runtimes/" (autolith-launcher-root :data)))
          (runtime-command (uiop:native-namestring sb-ext:*runtime-pathname*)))
     (handler-case
         (autolith-require-minimum-runtime version-pathname)

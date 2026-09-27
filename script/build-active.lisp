@@ -27,7 +27,7 @@
        (project-setup (merge-pathnames ".qlot/setup.lisp" source-root))
        (default-core
          (merge-pathnames "active/autolith-active.core"
-                          (autolith-application-root :data)))
+                          (autolith-launcher-root :data)))
        (arguments (uiop:command-line-arguments))
        ;; ACTIVE-IMAGE-INSTALL starts this script again with --child on hosts
        ;; without fork; that process loads the system and saves itself.

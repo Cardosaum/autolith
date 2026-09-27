@@ -356,7 +356,7 @@ Parent cleanup follows process-group termination, including crashes and timeouts
 
 (defun check--run-recovery (&key source-root temporary-root quicklisp-setup jobs timeout)
   "Run the pristine probe, listing, and fallback checks with bounded processes."
-  (let* ((data-root (autolith-application-root :data))
+  (let* ((data-root (autolith-launcher-root :data))
          (core (merge-pathnames "recovery/autolith-recovery.core" data-root))
          (manifest-path (merge-pathnames "recovery/manifest.sexp" data-root))
          (temporary-home (merge-pathnames "home/" temporary-root))

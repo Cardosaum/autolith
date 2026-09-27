@@ -31,7 +31,7 @@
      'recovery-context
      :source-root (asdf:system-source-directory :autolith)
      :generation-root (merge-pathnames "data/autolith/generations/" root)
-     :worktree-root (merge-pathnames "data/autolith/recovery-worktrees/" root)
+     :worktree-root (merge-pathnames "data/autolith-launcher/recovery-worktrees/" root)
      :state-root state-root
      :current-pathname (merge-pathnames "current-generation.sexp" state-root))))
 
@@ -108,7 +108,8 @@
                 "recovery ignores an invalid XDG data home")
                (test-assert
                 (equal (recovery-context-worktree-root context)
-                       (merge-pathnames "recovery-worktrees/" data-root))
+                       (merge-pathnames "recovery-worktrees/"
+                                        (platform-launcher-root *platform* ':data)))
                 "recovery worktrees use the default data home")
                (test-assert
                 (equal (recovery-context-state-root context) state-root)
@@ -122,6 +123,10 @@
                 (equal (recovery-context-generation-root context)
                        (merge-pathnames "autolith/generations/" data-home))
                 "recovery accepts an absolute XDG data home")
+               (test-assert
+                (equal (recovery-context-worktree-root context)
+                       (merge-pathnames "autolith-launcher/recovery-worktrees/" data-home))
+                "recovery puts worktrees below the launcher data root")
                (test-assert
                 (equal (recovery-context-state-root context)
                        (merge-pathnames "autolith/" state-home))

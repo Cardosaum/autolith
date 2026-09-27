@@ -24,7 +24,7 @@
        (home (user-homedir-pathname))
        (default-core
          (merge-pathnames "recovery/autolith-recovery.core"
-                          (autolith-application-root :data)))
+                          (autolith-launcher-root :data)))
        (core-pathname
          (pathname
           (or (if child-p (second arguments) (first arguments))

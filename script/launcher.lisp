@@ -22,7 +22,7 @@
    "CL_EXEC_SANDBOX_WINDOWS_HELPER"
    (uiop:native-namestring
     (merge-pathnames "native/sandbox/cl-exec-sandbox-windows.exe"
-                     (autolith-application-root ':data)))))
+                     (autolith-launcher-root ':data)))))
 
 
 ;;;; -- Launcher Options --
@@ -263,15 +263,16 @@
 (defun launcher-context (source-root)
   "Return the LAUNCHER-CONTEXT for SOURCE-ROOT and the current environment."
   (let* ((data-root (autolith-application-root :data))
+         (launcher-root (autolith-launcher-root :data))
          (state-root (autolith-application-root :state))
          (recovery-core
            (launcher-environment-pathname
             "AUTOLITH_RECOVERY_CORE"
-            (merge-pathnames "recovery/autolith-recovery.core" data-root)))
+            (merge-pathnames "recovery/autolith-recovery.core" launcher-root)))
          (active-core
            (launcher-environment-pathname
             "AUTOLITH_ACTIVE_CORE"
-            (merge-pathnames "active/autolith-active.core" data-root)))
+            (merge-pathnames "active/autolith-active.core" launcher-root)))
          (process-id (sb-posix:getpid)))
     (make-launcher-context
      :source-root source-root
@@ -367,7 +368,7 @@
 (defun launcher-refresh-runtime (context)
   "Adopt the runtime the bootstrap recorded, when it recorded one."
   (let* ((command-pathname (merge-pathnames "runtimes/command"
-                                            (launcher-context-data-root context)))
+                                            (autolith-launcher-root :data)))
          (recorded (with-open-file (stream command-pathname :direction :input
                                                             :if-does-not-exist nil
                                                             :external-format :utf-8)
