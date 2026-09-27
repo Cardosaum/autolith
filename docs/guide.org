@@ -222,13 +222,19 @@ Inside the sandbox:
 - Your home directory is hidden, with its SSH keys, cloud tokens, and tool
   logins. The exceptions are the workspace, Autolith's own configuration,
   data, state, and cache directories, the directories on =PATH=,
-  =~/quicklisp= and =~/common-lisp=, and the Codex and Grok logins Autolith
-  imports.
+  =~/quicklisp= and =~/common-lisp=. The Codex and Grok login files are hidden.
 - Autolith may write its workspace, its own directories, and temporary
   directories. The =autolith-launcher= data root and a source checkout
   outside the workspace stay read-only, so a modified
   Autolith cannot replace what starts it next time.
 - The network is open.
+- The launcher starts a separate credential broker before the agent. Provider
+  inference, native compaction, and model discovery pass through its private
+  socket. Stored provider credentials move from the agent state root to the
+  hidden =autolith-launcher= state root on first launch. The migration is safe
+  to rerun and is scheduled for removal in v0.53.0.
+  Interactive authentication and MCP calls still run in the agent process;
+  this broker boundary does not yet protect credentials entered through them.
 - Commands run with full access by default, because the sandbox already
   confines them. Choose =/permissions ask= or =/permissions auto= to be
   asked instead; the choice persists. There is no separate =sandbox= choice.
@@ -860,7 +866,7 @@ needed. Other models and providers receive the complete eager tool array.
 
 Authenticate Gemini with =autolith auth gemini=, =/auth gemini=, or
 =(auth "gemini")=. Autolith stores its Google OAuth credentials separately at
-=gemini-auth.sexp= under the state root. The provider uses the Gemini CLI Code
+=gemini-auth.sexp= under the launcher state root. The provider uses the Gemini CLI Code
 Assist subscription service directly, including streaming text and thinking,
 tool calls, token usage, account onboarding, and managed companion projects.
 =AUTOLITH_GEMINI_OAUTH_CLIENT_ID= may replace the public installed-application
@@ -884,7 +890,7 @@ The Nous integration accepts three deployment overrides:
   model discovery, Chat Completions, and Messages.
 - =AUTOLITH_NOUS_PROVIDER_ENDPOINT= overrides only the Chat Completions endpoint.
 
-Autolith stores Nous OAuth state separately at =nous-auth.sexp= under its state
+Autolith stores Nous OAuth state separately at =nous-auth.sexp= under the launcher state
 root and serializes rotating refresh-token updates across processes sharing that
 root.
 

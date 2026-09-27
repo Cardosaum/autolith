@@ -29,7 +29,7 @@ developers, but I consider correct for self-modifiability.
                     +-------------v--------------+
                     | XDG data and state roots    |
                     | conversations, memories,    |
-                    | agendas, images, credentials|
+                    | agendas and worker images  |
                     +----------------------------+
 #+END_SRC
 
@@ -42,8 +42,9 @@ developers, but I consider correct for self-modifiability.
   the live terminal region
 - *Workers* handle search (the special fff worker) and =lisp.*= REPLs.
   They live in separate Lisp images and cannot directly modify the agent.
-- *Durable records* live under reasonable XDG folders. This roughly includes
-  conversations, memories, agendas, images, and credentials
+- *Durable agent records* live under XDG folders for conversations, memories,
+  agendas, and worker images. Provider credentials live under the launcher's
+  separate state root.
 - Launcher-owned active and recovery images, installed runtimes, recovery
   worktrees, releases, Nix images and ASDF cache, and helpers live in the
   sibling =autolith-launcher= data root. Agent-owned records, generations,
@@ -51,6 +52,15 @@ developers, but I consider correct for self-modifiability.
   launcher data root without write access and keeps launcher config and state
   roots hidden. The launcher migrates legacy directories one at a time on
   first use; this compatibility path is scheduled for removal in v0.53.0.
+- The launcher starts a separate broker from the immutable active core before
+  the mutable agent enters its sandbox. It loads launcher-owned configuration
+  and handles inference, native compaction, and model discovery over a private
+  Unix socket. The sandboxed agent inherits a small non-secret environment and
+  cannot read the launcher state root or the Codex and Grok bootstrap files.
+  Stored credentials move individually into launcher state on first launch;
+  this migration is scheduled for removal in v0.53.0.
+  Interactive authentication and MCP transports remain agent-side at this
+  point, so the process boundary is not a hostile-code credential guarantee.
 - The *recovery image* is a separately built pristine core, which Autolith
   will reboot into in case the current image is FUBAR. Autolith can work
   using the recovery image to either fix figure out the issue with your
@@ -164,7 +174,7 @@ provider request --> semantic events --> agent --> validated tool calls
 #+END_SRC
 
 - Configuration records credential *locations* only
-- A provider request sees tokens only in its dynamic scope
+- Brokered provider requests see tokens only in the broker's dynamic scope
 - The optional Codex file is a one-time access-token import
 - Renewable ChatGPT credentials come from browser OAuth or the optional device-code flow
 
