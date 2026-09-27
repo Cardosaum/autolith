@@ -130,6 +130,14 @@ workspace and state, and keeps its images and source read-only."
                                                (quoted (merge-pathnames "README"
                                                                         source-root)))))
                        "the agent cannot modify a source root outside its workspace")
+        (with-test-environment
+            (("AUTOLITH_TEST_SECRET" "fixture-host-secret")
+             ("OPENAI_API_KEY" "fixture-provider-secret"))
+          (test-assert
+           (string= (output
+                     "printf '%s|%s|%s' \"${AUTOLITH_TEST_SECRET:-}\" \"${OPENAI_API_KEY:-}\" \"${AUTOLITH_AGENT_SANDBOX:-}\"")
+                    "||active")
+           "the agent inherits its sandbox marker without host credentials"))
         (test-assert (not (allowed-p (format nil "echo x > ~A"
                                              (quoted (merge-pathnames "fasl" user-cache)))))
                      "the agent cannot write the user's ASDF cache")

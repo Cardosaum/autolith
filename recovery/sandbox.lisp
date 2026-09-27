@@ -22,6 +22,25 @@ the user runs Autolith unconfined.")
   "Paths below the home directory the agent reads: its Lisp dependency
 stores, and the provider logins it imports until the launcher brokers them.")
 
+(defparameter *agent-sandbox-passthrough-variables*
+  '("HOME" "USER" "LOGNAME" "SHELL" "PATH" "TMPDIR"
+    "TERM" "COLORTERM" "LANG" "LC_ALL" "LC_CTYPE"
+    "XDG_CONFIG_HOME" "XDG_DATA_HOME" "XDG_STATE_HOME"
+    "SBCL_HOME" "AUTOLITH_SBCL" "AUTOLITH_SBCL_SOURCE_ROOT"
+    "AUTOLITH_SOURCE_ROOT" "AUTOLITH_PROJECT_SETUP"
+    "AUTOLITH_BROKER_SOCKET" "AUTOLITH_CRASH_POINTER"
+    "AUTOLITH_RECOVERY_SESSION_POINTER" "AUTOLITH_RESTART_POINTER"
+    "AUTOLITH_RECOVERED" "AUTOLITH_RECOVERY_CONVERSATION_ID"
+    "AUTOLITH_RECOVERY_HISTORY_FLOOR_SEQUENCE"
+    "AUTOLITH_RECOVERY_RENDERED_SEQUENCE"
+    "AUTOLITH_SESSION_STYLE" "AUTOLITH_INSTALLATION_KIND"
+    "AUTOLITH_RELEASE_ROOT" "AUTOLITH_NIX_SOURCE_ROOT"
+    "AUTOLITH_NO_UPDATE_CHECK" "AUTOLITH_SUPPRESS_UPDATE_OFFER"
+    "AUTOLITH_MODEL" "AUTOLITH_REASONING_EFFORT"
+    "AUTOLITH_WEB_SEARCH" "AUTOLITH_CODEX_FAST_MODE"
+    "SSL_CERT_FILE" "NIX_SSL_CERT_FILE")
+  "Non-secret launcher environment values passed into the mutable agent.")
+
 
 ;;;; -- Public Functions --
 
@@ -180,10 +199,11 @@ process status: 0, or 1 after explaining why the sandbox is unavailable."
 
 (serapeum:-> agent-sandbox--with-environment (list) list)
 (defun agent-sandbox--with-environment (command)
-  "Return COMMAND run through env with every cache inside the agent sandbox.
+  "Return COMMAND with a small environment and its cache inside the sandbox.
 
 A Nix installation compiles Autolith's source into AUTOLITH_ASDF_CACHE, which
-its unconfined image builder also loads, so the agent gets its own there too."
+its unconfined image builder also loads, so the agent gets its own there too.
+Credential-bearing and unrecognized host variables never enter the agent."
   (let* ((cache-home (agent-sandbox-cache-home))
          (nix-cache (uiop:getenv "AUTOLITH_ASDF_CACHE"))
          (nix-identity (and nix-cache
@@ -191,8 +211,17 @@ its unconfined image builder also loads, so the agent gets its own there too."
                             (first (last (pathname-directory
                                           (uiop:ensure-directory-pathname nix-cache))))))
          (bindings
-           (list (format nil "XDG_CACHE_HOME=~A"
-                         (string-right-trim "/" (uiop:native-namestring cache-home))))))
+           (loop for name in *agent-sandbox-passthrough-variables*
+                 for value = (uiop:getenv name)
+                 when value
+                   collect (format nil "~A=~A" name value))))
+    (setf bindings
+          (append bindings
+                  (list
+                   (format nil "XDG_CACHE_HOME=~A"
+                           (string-right-trim "/"
+                                              (uiop:native-namestring cache-home)))
+                   "AUTOLITH_AGENT_SANDBOX=active")))
     (when nix-identity
       (setf bindings
             (append bindings
@@ -200,7 +229,7 @@ its unconfined image builder also loads, so the agent gets its own there too."
                                   (uiop:native-namestring
                                    (merge-pathnames (format nil "nix-asdf/~A/" nix-identity)
                                                     cache-home)))))))
-    (append (list "/usr/bin/env") bindings command)))
+    (append (list "/usr/bin/env" "-i") bindings command)))
 
 (serapeum:-> agent-sandbox--runtime-rules () list)
 (defun agent-sandbox--runtime-rules ()
