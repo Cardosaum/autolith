@@ -111,3 +111,89 @@
            (null (broker--load-trusted-init broker))
            "broker starts without executing agent initialization")))))
   nil)
+
+(-> test-broker-agent-provider-route () null)
+(defun test-broker-agent-provider-route ()
+  "Test an active agent consumes broker transport without loading credentials."
+  (with-platform-capability (':local-sockets "broker provider route")
+    (with-test-configuration (configuration)
+      (let* ((registration (provider-registration-find "chatgpt"))
+             (model (provider-model-name
+                     (first (provider-registration-models registration))))
+             (selected (configuration-copy configuration :model model))
+             (provider (provider-create selected :registration registration))
+             (conversation (conversation-create selected))
+             (socket-root
+               (platform-make-temporary-directory
+                *platform* (uiop:temporary-directory)
+                "autolith-broker-provider-"))
+             (socket-pathname (merge-pathnames "broker.sock" socket-root))
+             (captured-request nil)
+             (captured-response nil)
+             (server
+               (broker-server-create
+                socket-pathname
+                (lambda (request write-frame)
+                  (setf captured-request request)
+                  (let ((payload
+                          (broker-provider--payload
+                           (getf (rest request) ':payload))))
+                    (unless (and (string= (getf (rest request) ':target)
+                                          "chatgpt")
+                                 (string= (json-get payload "model") model))
+                      (error "Agent sent an unexpected broker target."))
+                    (funcall write-frame
+                             '(:broker-result :status :open :code 200))
+                    (funcall write-frame
+                             (list ':broker-chunk ':text
+                                   (format nil "data: broker-result~%")))
+                    (funcall write-frame '(:broker-end))))))
+             (thread nil))
+        (unwind-protect
+             (progn
+               (broker-server-start server)
+               (setf thread
+                     (make-thread (lambda () (broker-server-serve server))
+                                  :name "Broker provider route test"))
+               (with-test-environment
+                   (("AUTOLITH_AGENT_SANDBOX" "active")
+                    ("AUTOLITH_BROKER_SOCKET" (namestring socket-pathname)))
+                 (test-call-with-function-replacements
+                  (list
+                   (list 'call-with-credentials
+                         (lambda (&rest arguments)
+                           (declare (ignore arguments))
+                           (error "Agent tried to load credentials.")))
+                   (list 'provider-request-object
+                         (lambda (&rest arguments)
+                           (declare (ignore arguments))
+                           (values (json-object "model" model) nil)))
+                   (list 'cl-llm-provider-api::provider-execute-request
+                         (lambda (provider request &key transport
+                                                    &allow-other-keys)
+                           (declare (ignore provider))
+                           (multiple-value-bind (body status)
+                               (funcall transport request)
+                             (setf captured-response
+                                   (list status (read-line body)))
+                             (make-instance 'provider-result)))))
+                  (lambda ()
+                    (provider-attempt-turn
+                     provider conversation
+                     :tool-namespaces #()
+                     :event-callback (lambda (&rest values)
+                                       (declare (ignore values)))))))
+               (test-assert
+                (equal captured-response '(200 "data: broker-result"))
+                "agent provider attempt uses the broker stream")
+               (test-assert
+                (and captured-request
+                     (string= (getf (rest captured-request) ':target)
+                              "chatgpt"))
+                "agent sends its registered target to the broker")
+          (broker-server-close server)
+          (when thread (join-thread thread))
+          (platform-delete-directory-tree *platform* socket-root
+                                          :validate t
+                                          :if-does-not-exist ':ignore)))))
+  nil))
