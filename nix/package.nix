@@ -396,8 +396,8 @@ let
   clExecSandboxSource = pkgs.fetchFromGitHub {
     owner = "lambda-symbolics";
     repo = "cl-exec-sandbox";
-    rev = "cc3416b92afefdcc10e58a117617c538bc9a165a";
-    hash = "sha256-h6p3Qey7w973JWo9qIdUfUB9Iee3QiTEbQ8v2odVIbY=";
+    rev = "daa594f2feab14ebf450b9478561b8acf8240688";
+    hash = "sha256-RTelYp2wPO7pzRBvXzDVaMDL3TW6t9tfeh6m5+rrCho=";
   };
 
   clExecSandbox = pkgs.sbcl.buildASDFSystem {
