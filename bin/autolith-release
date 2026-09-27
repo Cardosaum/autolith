@@ -56,6 +56,7 @@ runtime_root=$release_root/runtime
 runtime_source_root=$release_root/libexec/sbcl-source
 sbcl_command=$runtime_root/bin/sbcl
 sandbox_helper=$release_root/libexec/cl-exec-sandbox-helper
+terminal_relay=$release_root/libexec/autolith-terminal-relay
 launcher_data_root=$data_home/autolith-launcher
 active_core=$launcher_data_root/active/autolith-active.core
 recovery_core=$launcher_data_root/recovery/autolith-recovery.core
@@ -293,6 +294,9 @@ fi
 if [[ $release_platform == *-linux* ]]; then
   [[ -x $sandbox_helper ]] || fail "the private sandbox helper is missing."
 fi
+if [[ $release_platform == *-linux* || $release_platform == *-darwin ]]; then
+  [[ -x $terminal_relay ]] || fail "the private terminal relay is missing."
+fi
 if [[ $release_platform != *-linux-musl ]]; then
   [[ -f $fff_library ]] || fail "the private search library is missing."
   [[ -f $colorlisp_library ]] || fail "the private syntax library is missing."
@@ -326,6 +330,9 @@ export AUTOLITH_FFF_LIBRARY=$fff_library
 export COLORLISP_NATIVE_LIBRARY=$colorlisp_library
 export AUTOLITH_ACTIVE_CORE=$active_core
 export AUTOLITH_RECOVERY_CORE=$recovery_core
+if [[ $release_platform == *-linux* || $release_platform == *-darwin ]]; then
+  export AUTOLITH_TERMINAL_RELAY=$terminal_relay
+fi
 if [[ $release_platform == *-linux* ]]; then
   export CL_EXEC_SANDBOX_BWRAP
   CL_EXEC_SANDBOX_BWRAP=$(command -v bwrap)

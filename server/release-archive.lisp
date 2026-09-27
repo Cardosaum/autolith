@@ -602,6 +602,8 @@ the managed runtime, matching SBCL source, native libraries, and sandbox helper.
                 source-root '("show" "-s" "--format=%ct" "HEAD"))))
         (release-archive--require-commands
          '("chmod" "cp" "find" "git" "gzip" "tar"))
+        (when (member (software-type) '("Darwin" "Linux") :test #'string-equal)
+          (release-archive--require-commands '("cc")))
          (when static-musl-p
            (release-archive--require-commands '("file" "readelf")))
         (release-archive--sha256-command)
@@ -695,7 +697,8 @@ the managed runtime, matching SBCL source, native libraries, and sandbox helper.
                  (uiop:ensure-all-directories-exist
                   (list packaged-source
                         (merge-pathnames "bin/" release-root)
-                        (merge-pathnames "lib/" release-root)))
+                        (merge-pathnames "lib/" release-root)
+                        (merge-pathnames "libexec/" release-root)))
                  (format t "~&Collecting tracked source at ~A.~%" commit)
                  (finish-output)
                    (release-archive--run
@@ -711,6 +714,21 @@ the managed runtime, matching SBCL source, native libraries, and sandbox helper.
                   (merge-pathnames ".qlot" packaged-source))
                  (release-archive--materialize-dependency-links
                   (merge-pathnames ".qlot/" packaged-source))
+                 (when (member (software-type) '("Darwin" "Linux")
+                               :test #'string-equal)
+                   (release-archive--run
+                    (append
+                     (list "cc" "-std=c11" "-O2" "-Wall" "-Wextra" "-Werror")
+                     (when static-musl-p (list "-static"))
+                     (list (namestring
+                            (merge-pathnames "native/terminal-relay.c"
+                                             packaged-source))
+                           "-o"
+                           (namestring
+                            (merge-pathnames "libexec/autolith-terminal-relay"
+                                             release-root)))
+                     (when (string-equal (software-type) "Linux")
+                       (list "-lutil")))))
                  (format t "~&Collecting the pinned SBCL runtime and source.~%")
                  (finish-output)
                  (release-archive--copy

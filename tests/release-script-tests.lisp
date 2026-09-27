@@ -233,7 +233,8 @@ fi
                  (format nil "lib/libcolorlisp-tree-sitter.~A"
                          library-extension)
                  "runtime/bin/sbcl"
-                 "libexec/cl-exec-sandbox-helper"))
+                 "libexec/cl-exec-sandbox-helper"
+                 "libexec/autolith-terminal-relay"))
     (release-script-tests--write-file
      (merge-pathnames relative release-root)
      ""))
@@ -257,6 +258,8 @@ fi
    "755" (merge-pathnames "runtime/bin/sbcl" release-root))
   (release-script-tests--chmod
    "755" (merge-pathnames "libexec/cl-exec-sandbox-helper" release-root))
+  (release-script-tests--chmod
+   "755" (merge-pathnames "libexec/autolith-terminal-relay" release-root))
   (release-script-tests--record
    (merge-pathnames "RELEASE" release-root)
    (format nil "v~A" *release-script-tests-version*)
