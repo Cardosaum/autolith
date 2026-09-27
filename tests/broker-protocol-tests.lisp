@@ -25,6 +25,9 @@
                    :operation :read-secret :target "chatgpt" :payload "{}"
                    :capability "launch-token")
                  '(:broker-request :version 2
+                   :operation :provider-authenticate :target "chatgpt"
+                   :payload "{}" :capability "launch-token")
+                 '(:broker-request :version 2
                    :operation :provider-turn :target "" :payload "{}"
                    :capability "launch-token")
                  '(:broker-request :version 2
