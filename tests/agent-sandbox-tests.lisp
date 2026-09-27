@@ -72,13 +72,15 @@ workspace and state, and keeps its images and source read-only."
            (secret (agent-sandbox-tests--write (merge-pathnames ".ssh/id_ed25519" home)
                                                "secret"))
            (state-root (merge-pathnames ".local/state/autolith/" home))
-           (active (merge-pathnames ".local/share/autolith/active/" home))
-           (worktrees (merge-pathnames ".local/share/autolith/recovery-worktrees/" home))
+           (data-root (merge-pathnames ".local/share/autolith/" home))
+           (active (merge-pathnames ".local/share/autolith-launcher/active/" home))
+           (worktrees (merge-pathnames ".local/share/autolith-launcher/recovery-worktrees/" home))
            (user-cache (merge-pathnames ".cache/common-lisp/" home))
            (agent-cache (merge-pathnames ".cache/autolith/" home)))
       (agent-sandbox-tests--write (merge-pathnames "README" source-root) "source")
       (ensure-directories-exist workspace)
       (ensure-directories-exist state-root)
+      (ensure-directories-exist data-root)
       (ensure-directories-exist active)
       (ensure-directories-exist worktrees)
       (ensure-directories-exist user-cache)
@@ -115,6 +117,9 @@ workspace and state, and keeps its images and source read-only."
           (test-assert (allowed-p (format nil "echo state > ~A"
                                           (quoted (merge-pathnames "state" state-root))))
                        "the agent writes its state root")
+          (test-assert (allowed-p (format nil "echo data > ~A"
+                                          (quoted (merge-pathnames "data" data-root))))
+                       "the agent writes its data root")
           (test-assert (not (allowed-p (format nil "echo core > ~A"
                                                (quoted (merge-pathnames "core" active)))))
                        "the agent cannot replace the active image")
@@ -132,7 +137,7 @@ workspace and state, and keeps its images and source read-only."
                                              (quoted (merge-pathnames "config" worktrees)))))
                      "the agent cannot write the checkouts recovery runs Git in")
         (dolist (relative '("installation/current" "nix/images/active" "helpers/helper"))
-          (let ((target (merge-pathnames relative (merge-pathnames ".local/share/autolith/"
+          (let ((target (merge-pathnames relative (merge-pathnames ".local/share/autolith-launcher/"
                                                                    home))))
             (ensure-directories-exist target)
             (test-assert (not (allowed-p (format nil "echo x > ~A"
@@ -150,7 +155,7 @@ workspace and state, and keeps its images and source read-only."
                                           (uiop:escape-sh-token cache-home)
                                           (uiop:escape-sh-token cache-home)))
                        "the agent writes its ASDF cache"))
-        (let ((nix-cache (merge-pathnames ".local/share/autolith/nix/asdf-cache/identity/" home)))
+        (let ((nix-cache (merge-pathnames ".local/share/autolith-launcher/nix/asdf-cache/identity/" home)))
           (ensure-directories-exist nix-cache)
           (with-test-environment (("AUTOLITH_ASDF_CACHE" (agent-sandbox-tests--native nix-cache)))
             (let ((redirected (output "printf %s \"$AUTOLITH_ASDF_CACHE\"")))

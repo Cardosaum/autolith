@@ -17,15 +17,6 @@
 inside the sandbox, so nested launches are not wrapped again, or \"off\" when
 the user runs Autolith unconfined.")
 
-(defparameter *agent-sandbox-read-only-data*
-  '("active/" "recovery/" "runtimes/" "recovery-worktrees/" "installation/" "nix/"
-    "helpers/")
-  "Directories below the data root the agent may read but never replace: what
-unconfined programs start or load. These are the active and recovery images,
-the installed runtimes and releases, the Nix images and the compiled files
-their builder loads, the sandbox helpers, and the checkouts where recovery runs
-Git.")
-
 (defparameter *agent-sandbox-home-read-paths*
   '("quicklisp/" "common-lisp/" ".codex/auth.json" ".grok/auth.json")
   "Paths below the home directory the agent reads: its Lisp dependency
@@ -62,7 +53,7 @@ network stays open, and processes are not isolated, so sessions started from
 different terminals still find each other."
   (let* ((home (uiop:ensure-directory-pathname (user-homedir-pathname)))
          (workspace (uiop:ensure-directory-pathname workspace))
-         (data-root (autolith-application-root :data)))
+         (launcher-data-root (autolith-launcher-root :data)))
     (when (uiop:subpathp home workspace)
       (error 'agent-sandbox-unavailable
              :message (format nil "Autolith works in ~A, which contains the home directory ~
@@ -89,8 +80,9 @@ different terminals still find each other."
               (special ':slash-tmp ':write))
         (mapcar (lambda (kind) (rule (autolith-application-root kind) ':write))
                 '(:config :data :state :cache))
-        (mapcar (lambda (relative) (rule (merge-pathnames relative data-root) ':read))
-                *agent-sandbox-read-only-data*)
+        (list (rule launcher-data-root ':read))
+        (mapcar (lambda (kind) (rule (autolith-launcher-root kind) ':deny))
+                '(:config :state))
         (unless (uiop:subpathp source-root workspace)
           (list (rule source-root ':read)))
         (loop for relative in *agent-sandbox-home-read-paths*
