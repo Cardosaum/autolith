@@ -137,6 +137,8 @@
          (list
           (list 'broker-mcp-agent--discover
                 (lambda () (list record)))
+          (list 'broker-registered-agent--discover
+                (lambda () nil))
           (list 'mcp-manager-create
                 (lambda (configuration)
                   (declare (ignore configuration))

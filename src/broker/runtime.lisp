@@ -72,6 +72,18 @@
                 :message "MCP calls have an invalid target."
                 :reason ':target))
        (broker-mcp-call mcp-service payload write-frame))
+      (:registered-tool-discover
+       (unless (string= target "registered")
+         (error 'broker-protocol-error
+                :message "Trusted tool discovery has an invalid target."
+                :reason ':target))
+       (broker-registered-tools-discover payload write-frame))
+      (:registered-tool-call
+       (unless (string= target "registered")
+         (error 'broker-protocol-error
+                :message "A trusted tool call has an invalid target."
+                :reason ':target))
+       (broker-registered-tools-call payload write-frame))
       (otherwise
        (error 'broker-protocol-error
               :message "The requested broker operation is unavailable."
@@ -101,7 +113,9 @@
              :reason ':path))
     (configuration-ensure-directories configuration)
     (mcp--registry-restore nil)
-    (broker--load-trusted-init configuration)
+    (setf *broker-registered-tools* nil)
+    (let ((*broker-registration-open-p* t))
+      (broker--load-trusted-init configuration))
     (provider-bootstrap-configuration configuration)
     (let* ((*configuration* configuration)
            (mcp-service (broker-mcp-service-create configuration))
@@ -122,7 +136,8 @@
   "Authenticate one registered provider in the trusted launcher image."
   (let ((configuration (broker--configuration)))
     (configuration-ensure-directories configuration)
-    (broker--load-trusted-init configuration)
+    (let ((*broker-registration-open-p* t))
+      (broker--load-trusted-init configuration))
     (let ((*configuration* configuration))
       (main-authenticate
        (provider-bootstrap-configuration configuration)

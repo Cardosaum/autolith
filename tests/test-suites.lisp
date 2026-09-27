@@ -405,6 +405,10 @@
   test-broker-mcp-policy
   test-broker-mcp-agent-route)
 
+(define-test-suite broker-tools
+  test-broker-registered-tool-policy
+  test-broker-registered-agent-route)
+
 (define-test-suite active-image
   test-active-image-build-record
   test-image-commit-surface-battery

@@ -15,7 +15,8 @@
 
 (defparameter *broker-operations*
   '(:provider-turn :provider-compaction :provider-models
-    :provider-authenticate :mcp-discover :mcp-call :registered-tool-call)
+    :provider-authenticate :mcp-discover :mcp-call
+    :registered-tool-discover :registered-tool-call)
   "The exact credentialed operations accepted by the broker envelope.")
 
 (define-condition broker-protocol-error (autolith-error)

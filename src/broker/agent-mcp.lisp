@@ -122,7 +122,8 @@
                        (broker-mcp-agent--discover)))
         (names (make-hash-table :test #'equal)))
     (dolist (tool (tool-registry-tools registry))
-      (unless (typep tool 'broker-mcp-tool)
+      (unless (and (typep tool 'broker-mcp-tool)
+                   (not (typep tool 'broker-registered-agent-tool)))
         (setf (gethash (tool-canonical-name tool) names) t)))
     (dolist (tool tools)
       (when (gethash (tool-canonical-name tool) names)
@@ -131,7 +132,10 @@
                :reason ':response))
       (setf (gethash (tool-canonical-name tool) names) t))
     (tool-registry-delete-if registry
-                             (lambda (tool) (typep tool 'broker-mcp-tool)))
+                             (lambda (tool)
+                               (and (typep tool 'broker-mcp-tool)
+                                    (not (typep tool
+                                                'broker-registered-agent-tool)))))
     (dolist (tool tools)
       (tool-registry-register registry tool)))
   registry)
