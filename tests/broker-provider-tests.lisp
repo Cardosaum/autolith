@@ -60,6 +60,13 @@
                (search "broker-secret-token" (rest header)))
              captured-headers)
        "only the trusted provider transport receives the credential")
+      (multiple-value-bind (resolved-provider conversation force-refresh)
+          (broker-provider--resolve configuration "chatgpt"
+                                    (broker-provider--payload payload))
+        (declare (ignore conversation force-refresh))
+        (test-assert
+         (eq (model-provider-registration resolved-provider) registration)
+         "trusted provider retains its selected registration"))
       (test-assert
        (not (search "broker-secret-token"
                     (with-output-to-string (stream)

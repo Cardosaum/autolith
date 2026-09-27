@@ -64,8 +64,8 @@
     (let* ((request-configuration
              (configuration-copy configuration :model model))
            (provider
-             (funcall (provider-registration-factory registration)
-                      request-configuration :reasoning-summaries-p nil))
+             (provider-create request-configuration
+                              :registration registration))
            (conversation
              (conversation-create
               request-configuration
