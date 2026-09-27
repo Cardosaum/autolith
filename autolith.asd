@@ -195,6 +195,7 @@
                              (:file "broker/protocol")
                              (:file "broker/server")
                              (:file "broker/client")
+                             (:file "broker/response-stream")
                              (:file "application/change-viewer")
                              (:file "application/tool-presentation")
                              (:file "application/change-presentation")

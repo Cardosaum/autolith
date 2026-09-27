@@ -23,9 +23,20 @@
              (broker-server-create
               pathname
               (lambda (request write-frame)
-                (funcall write-frame
-                         (list ':broker-result ':status ':ok
-                               :target (getf (rest request) ':target))))))
+                (if (string= (getf (rest request) ':target) "stream")
+                    (progn
+                      (funcall write-frame
+                               '(:broker-result :status :open :code 200))
+                      (funcall write-frame
+                               (list ':broker-chunk ':text
+                                     (format nil "data: first~%")))
+                      (funcall write-frame
+                               (list ':broker-chunk ':text
+                                     (format nil "data: second~%")))
+                      (funcall write-frame '(:broker-end)))
+                    (funcall write-frame
+                             (list ':broker-result ':status ':ok
+                                   :target (getf (rest request) ':target)))))))
            (thread nil))
       (unwind-protect
            (progn
@@ -65,6 +76,20 @@
                      stream *broker-maximum-frame-size*)))
                  '(:broker-result :status :ok :target "chatgpt"))
                 "broker client completes a validated request"))
+             (test-assert
+              (equal
+               (broker-client-request
+                ':provider-turn "stream" "{}"
+                (lambda (stream)
+                  (multiple-value-bind (body status)
+                      (broker-response-open stream)
+                    (list status
+                          (read-line body)
+                          (read-line body)
+                          (read-char body nil ':eof))))
+                :socket-pathname pathname)
+               '(200 "data: first" "data: second" :eof))
+              "broker streams response chunks to a character reader")
              (multiple-value-bind (socket stream)
                  (broker-server-test--connect pathname)
                (unwind-protect
