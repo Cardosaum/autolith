@@ -814,7 +814,9 @@ pkgs.writeShellApplication {
 
     # Keep Nix-managed image and ASDF state separate from source installs while
     # retaining the user's conversations and private mutation history.
-    nix_root="$data_home/autolith/nix"
+    source "${autolithSystem}/script/migrate-launcher-data"
+    autolith_migrate_launcher_data "$data_home"
+    nix_root="$data_home/autolith-launcher/nix"
     identity_name="${builtins.baseNameOf (toString imageIdentity)}"
     image_root="$nix_root/images"
     image_directory="$image_root/$identity_name"

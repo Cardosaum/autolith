@@ -570,7 +570,7 @@ the managed runtime, matching SBCL source, native libraries, and sandbox helper.
                  (merge-pathnames ".local/share/" home)))
               (runtime-root
                 (merge-pathnames
-                 (format nil "autolith/runtimes/~A/" runtime-version)
+                 (format nil "autolith-launcher/runtimes/~A/" runtime-version)
                  data-home))
               (runtime-installation
                 (release-archive--environment-pathname

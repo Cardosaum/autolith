@@ -7,7 +7,7 @@ state_root=/state
 output_root=/output
 home=$state_root/home
 runtime_version=$(tr -d '[:space:]' < "$source_root/sbcl.version")
-runtime_root=$state_root/data/autolith/runtimes/$runtime_version
+runtime_root=$state_root/data/autolith-launcher/runtimes/$runtime_version
 runtime_installation=$runtime_root/installation
 runtime_command=$runtime_installation/bin/sbcl
 
