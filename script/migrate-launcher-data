@@ -54,3 +54,40 @@ autolith_migrate_launcher_data()
     mv -f -- "$migration_temporary" "$migration_command" || return 1
   fi
 }
+
+# Remove this credential migration in v0.53.0 after installations storing
+# provider credentials in the agent state root are no longer supported.
+autolith_migrate_launcher_credentials()
+{
+  migration_state_home=${1%/}
+  [ -n "$migration_state_home" ] || migration_state_home=/
+  migration_old=$migration_state_home/autolith
+  migration_new=$migration_state_home/autolith-launcher
+
+  if [ -L "$migration_old" ] || [ -L "$migration_new" ]; then
+    printf 'Autolith credential migration: a state root is a symbolic link.\n' >&2
+    return 1
+  fi
+  [ -d "$migration_old" ] || return 0
+  if [ ! -e "$migration_new" ]; then
+    mkdir -m 700 -- "$migration_new" || return 1
+  fi
+  [ -d "$migration_new" ] || return 1
+  chmod 700 "$migration_new" || return 1
+
+  for migration_name in auth.sexp grok-auth.sexp nous-auth.sexp \
+      gemini-auth.sexp api-keys.sexp fireworks-auth.sexp opencode-auth.sexp; do
+    migration_source=$migration_old/$migration_name
+    migration_target=$migration_new/$migration_name
+    if [ -L "$migration_source" ] || [ -L "$migration_target" ]; then
+      printf 'Autolith credential migration: %s is a symbolic link.\n' "$migration_name" >&2
+      return 1
+    fi
+    [ -e "$migration_source" ] || continue
+    if [ ! -f "$migration_source" ] || [ -e "$migration_target" ]; then
+      printf 'Autolith credential migration: %s cannot be moved safely.\n' "$migration_name" >&2
+      return 1
+    fi
+    mv -- "$migration_source" "$migration_target" || return 1
+  done
+}

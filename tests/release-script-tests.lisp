@@ -652,6 +652,68 @@ printf 'subprocess %s\\n' \"$*\" >> \"${AUTOLITH_TEST_EVENT_LOG:?}\"
      (asdf:system-source-directory :autolith) root))
   nil)
 
+(-> test-launcher-credential-migration () null)
+(defun test-launcher-credential-migration ()
+  "Test fresh, repeated, partial, and linked legacy credential moves."
+  (with-test-configuration (configuration root)
+    (declare (ignore configuration))
+    (let ((migration (asdf:system-relative-pathname
+                      :autolith "script/migrate-launcher-data")))
+      (labels ((run (state-home)
+                 (release-script-tests--run
+                  (list "sh" "-c"
+                        ". \"$1\"; autolith_migrate_launcher_credentials \"$2\""
+                        "credential-migration-test"
+                        (namestring migration) (namestring state-home))
+                  :ignore-error-status t)))
+        (dolist (case '("fresh" "migrated" "partial" "linked"))
+          (let* ((state-home (merge-pathnames
+                              (format nil "credentials-~A/" case) root))
+                 (old (merge-pathnames "autolith/" state-home))
+                 (new (merge-pathnames "autolith-launcher/" state-home))
+                 (outside (merge-pathnames "outside.sexp" state-home)))
+            (ensure-directories-exist (merge-pathnames "marker" state-home))
+            (cond
+              ((string= case "fresh")
+               (release-script-tests--write-file
+                (merge-pathnames "auth.sexp" old) "fresh"))
+              ((string= case "migrated")
+               (release-script-tests--write-file
+                (merge-pathnames "auth.sexp" new) "migrated"))
+              ((string= case "partial")
+               (release-script-tests--write-file
+                (merge-pathnames "auth.sexp" new) "migrated")
+               (release-script-tests--write-file
+                (merge-pathnames "grok-auth.sexp" old) "pending"))
+              ((string= case "linked")
+               (release-script-tests--write-file outside "outside")
+               (ensure-directories-exist (merge-pathnames "marker" old))
+               (sb-posix:symlink
+                (namestring outside)
+                (namestring (merge-pathnames "auth.sexp" old)))))
+            (multiple-value-bind (output error-output status)
+                (run state-home)
+              (declare (ignore output))
+              (test-assert (eq (zerop status) (not (string= case "linked")))
+                           (format nil "~A credential migration result: ~A"
+                                   case error-output)))
+            (unless (string= case "linked")
+              (test-assert (not (probe-file (merge-pathnames
+                                             "grok-auth.sexp" old)))
+                           "partial migration moves the remaining file")
+              (test-assert (probe-file (merge-pathnames "auth.sexp" new))
+                           "migrated credential remains in launcher state")
+              (multiple-value-bind (output error-output status)
+                  (run state-home)
+                (declare (ignore output))
+                (test-assert (zerop status)
+                             (format nil "~A migration reruns: ~A"
+                                     case error-output))))
+            (when (string= case "linked")
+              (test-assert (equal (uiop:read-file-string outside) "outside")
+                           "linked credential target stays unchanged")))))))
+  nil)
+
 (-> release-script-tests--source-launcher (pathname pathname) null)
 (defun release-script-tests--source-launcher (source-root root)
   "Exercise source-image selection, bootstrap prompting, and forced source use."

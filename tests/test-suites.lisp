@@ -612,6 +612,7 @@
     test-build-sandbox-packaged-helpers
     test-installer-checksum-verification
     test-launcher-data-migration
+    test-launcher-credential-migration
     test-release-scripts))
 
 (define-test-suite data-transfer
