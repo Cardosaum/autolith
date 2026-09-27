@@ -432,6 +432,23 @@ let
     '';
   };
 
+  terminalRelay = pkgs.stdenv.mkDerivation {
+    pname = "autolith-terminal-relay";
+    version = "0.1.0";
+    src = ../native/terminal-relay.c;
+    dontUnpack = true;
+    buildPhase = ''
+      runHook preBuild
+      cc -std=c11 -O2 -Wall -Wextra -Werror "$src" -o terminal-relay ${lib.optionalString pkgs.stdenv.isLinux "-lutil"}
+      runHook postBuild
+    '';
+    installPhase = ''
+      runHook preInstall
+      install -Dm755 terminal-relay "$out/bin/autolith-terminal-relay"
+      runHook postInstall
+    '';
+  };
+
   fffLibrary = pkgs.rustPlatform.buildRustPackage {
     pname = "fff-c";
     version = "0.10.3";
@@ -605,6 +622,7 @@ let
   # Resolve helpers from the Nix store, not the Lisp system's build directory.
   sandboxEnvironment = ''
     export CL_EXEC_SANDBOX_PROCESS_GROUP_HELPER="${sandboxHelper}/libexec/cl-exec-sandbox-process-group"
+    export AUTOLITH_TERMINAL_RELAY="${terminalRelay}/bin/autolith-terminal-relay"
   '' + lib.optionalString pkgs.stdenv.isLinux ''
     export CL_EXEC_SANDBOX_BWRAP="${pkgs.bubblewrap}/bin/bwrap"
     export CL_EXEC_SANDBOX_HELPER="${sandboxHelper}/libexec/cl-exec-sandbox-helper"
@@ -853,6 +871,6 @@ pkgs.writeShellApplication {
     inherit autolithSystem clColorist clExecSandbox clifff clinedi clJobpond
       colorlisp colorlispNativeLibrary fffLibrary idsmall imageIdentity
       imageValidation runtime sandboxHelper sbclGenerations sbclSource mcparen
-      sbclWorkers sexpConfig sexpStore;
+      sbclWorkers sexpConfig sexpStore terminalRelay;
   };
 }
