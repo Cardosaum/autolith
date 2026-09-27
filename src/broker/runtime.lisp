@@ -5,6 +5,9 @@
 (defparameter *broker-image-argument* "--autolith-internal-broker"
   "The stable launcher's private entry into the preloaded broker image.")
 
+(defparameter *broker-auth-image-argument* "--autolith-internal-auth"
+  "The stable launcher's trusted terminal authentication entry.")
+
 (-> broker--configuration () configuration)
 (defun broker--configuration ()
   "Create broker-owned configuration under launcher-only roots."
@@ -92,4 +95,16 @@
              (lambda (request write-frame)
                (broker--handle-request configuration request write-frame)))))
       (broker-server-serve server)))
+  nil)
+
+(-> broker-authenticate ((option string) (option string)) null)
+(defun broker-authenticate (selection method)
+  "Authenticate one registered provider in the trusted launcher image."
+  (let ((configuration (broker--configuration)))
+    (configuration-ensure-directories configuration)
+    (broker--load-trusted-init configuration)
+    (let ((*configuration* configuration))
+      (main-authenticate
+       (provider-bootstrap-configuration configuration)
+       selection method)))
   nil)

@@ -105,6 +105,9 @@
 (defmethod provider-authenticate :around
     ((provider model-provider) &key stream open-browser-p)
   "Give a registered provider authenticator precedence over protocol defaults."
+  (when (eq (agent-sandbox-state) ':active)
+    (error 'authentication-error
+           :message "Run autolith auth from the launcher terminal."))
   (let* ((registration (model-provider-registration provider))
          (authenticator
            (and registration

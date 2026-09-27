@@ -850,6 +850,20 @@ printf '(:ACTIVE-IMAGE :VERSION 1\\n)\\n' > \"$active/manifest.sexp\"
       (release-script-tests--write-file active-core "")
       (release-script-tests--write-file
        active-manifest (format nil "(:ACTIVE-IMAGE :VERSION 1~%)~%"))
+      (release-script-tests--write-file log "")
+      (let* ((output
+               (release-script-tests--run
+                (list (namestring launcher) "auth" "chatgpt" "device")
+                :environment environment))
+             (events (uiop:read-file-string log)))
+        (test-assert
+         (let ((auth-position
+                 (search "--autolith-internal-auth chatgpt device" events))
+               (agent-position (search "SBCL" events :from-end t)))
+           (and auth-position agent-position
+                (< auth-position agent-position)
+                (search "ACTIVE" output)))
+         "launcher authenticates in its immutable image before starting the agent"))
       (let ((sandboxed-environment
               (cons "AUTOLITH_AGENT_SANDBOX=" (rest environment))))
         (multiple-value-bind (output error-output status)

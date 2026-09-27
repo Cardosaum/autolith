@@ -393,6 +393,7 @@
 (define-test-suite broker-provider
   test-broker-provider-transport
   test-broker-trusted-configuration
+  test-broker-agent-credential-denial
   test-broker-agent-provider-route
   test-broker-native-compaction
   test-broker-agent-native-compaction

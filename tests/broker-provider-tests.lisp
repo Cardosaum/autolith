@@ -116,7 +116,50 @@
            "broker initialization is separate from the agent")
           (test-assert
            (null (broker--load-trusted-init broker))
-           "broker starts without executing agent initialization")))))
+           "broker starts without executing agent initialization")
+          (let ((captured nil))
+            (test-call-with-function-replacements
+             (list (list 'main-authenticate
+                         (lambda (trusted selection method)
+                           (setf captured (list trusted selection method))
+                           nil)))
+             (lambda () (broker-authenticate "chatgpt" "device")))
+            (test-assert
+             (and (equal (rest captured) '("chatgpt" "device"))
+                  (equal (config :state-root (first captured))
+                         (platform-launcher-root *platform* ':state)))
+             "trusted terminal authentication uses launcher state"))))))
+  nil)
+
+(-> test-broker-agent-credential-denial () null)
+(defun test-broker-agent-credential-denial ()
+  "Test direct credential access and interactive login fail in the agent."
+  (with-test-configuration (configuration)
+    (let* ((registration (provider-registration-find "chatgpt"))
+           (model (provider-model-name
+                   (first (provider-registration-models registration))))
+           (provider (provider-create
+                      (configuration-copy configuration :model model)
+                      :registration registration)))
+      (with-test-environment (("AUTOLITH_AGENT_SANDBOX" "active"))
+        (test-assert
+         (handler-case
+             (progn
+               (call-with-credentials
+                (provider-credential-manager provider)
+                (lambda (credentials)
+                  (declare (ignore credentials))
+                  (error "Agent reached a credential.")))
+               nil)
+           (authentication-error () t))
+         "agent cannot enter a direct credential request scope")
+        (test-assert
+         (handler-case
+             (progn
+               (provider-authenticate provider)
+               nil)
+           (authentication-error () t))
+         "agent cannot run interactive authentication"))))
   nil)
 
 (-> test-broker-agent-provider-route () null)

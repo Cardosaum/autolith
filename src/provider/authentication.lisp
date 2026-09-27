@@ -415,6 +415,9 @@ its protocol-level close operation."
 
 (defun call-with-credentials (manager function &key force-refresh)
   "Call FUNCTION inside Autolith's credential request scope."
+  (when (eq (agent-sandbox-state) ':active)
+    (error 'authentication-error
+           :message "Provider credentials are available only in the launcher broker."))
   (let ((*credentials-in-request-scope* t))
     (cl-rfc8628:call-with-credentials manager function :force-refresh force-refresh)))
 

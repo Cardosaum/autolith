@@ -220,6 +220,15 @@
                       :stage ':entry
                       :pathname source-root))
              (broker-run (pathname (third arguments))))
+            ((and (<= 2 (length arguments) 4)
+                  (string= (second arguments) *broker-auth-image-argument*))
+             (unless (active-image-build-record-compatible-p
+                      *active-image-build-record* source-root)
+               (error 'active-image-build-error
+                      :message "The authentication image does not match its source."
+                      :stage ':entry
+                      :pathname source-root))
+             (broker-authenticate (third arguments) (fourth arguments)))
             ((null source-root)
              (error 'active-image-build-error
                     :message "The preloaded active image needs its source root."

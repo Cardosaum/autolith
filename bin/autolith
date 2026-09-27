@@ -370,6 +370,22 @@ if [[ "$recovery_requested" == true ]]; then
   exit $?
 fi
 
+if [[ ${remaining_arguments[0]:-} == auth ]]; then
+  if [[ ${#remaining_arguments[@]} -gt 3 ]]; then
+    printf 'Usage: autolith auth [PROVIDER] [METHOD]\n' >&2
+    exit 64
+  fi
+  if ! active_image_valid; then
+    printf '%sAutolith needs a current active image for trusted authentication.%s\n' \
+      "$launcher_failure" "$launcher_reset" >&2
+    exit 64
+  fi
+  "$sbcl_command" --noinform --core "$active_core" \
+    --end-runtime-options "$source_root" \
+    --autolith-internal-auth "${remaining_arguments[@]:1}" || exit $?
+  remaining_arguments=()
+fi
+
 crash_pointer_directory="$state_home/autolith/crash-pointers"
 mkdir -p -- "$crash_pointer_directory"
 chmod 700 "$crash_pointer_directory"
