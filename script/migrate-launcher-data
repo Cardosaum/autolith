@@ -91,3 +91,43 @@ autolith_migrate_launcher_credentials()
     mv -- "$migration_source" "$migration_target" || return 1
   done
 }
+
+# Remove this MCP configuration migration in v0.53.0 after installations
+# storing server credentials in the agent config root are no longer supported.
+autolith_migrate_launcher_mcp_configuration()
+{
+  migration_config_home=${1%/}
+  [ -n "$migration_config_home" ] || migration_config_home=/
+  migration_old=$migration_config_home/autolith
+  migration_new=$migration_config_home/autolith-launcher
+  migration_source=$migration_old/mcp.sexp
+  migration_target=$migration_new/mcp.sexp
+
+  if [ -L "$migration_config_home" ] ||
+     [ -L "$migration_old" ] || [ -L "$migration_new" ] ||
+     [ -L "$migration_source" ] || [ -L "$migration_target" ]; then
+    printf 'Autolith MCP migration: a configuration path is a symbolic link.\n' >&2
+    return 1
+  fi
+  if [ -d "$migration_new" ]; then
+    chmod 700 "$migration_new" || return 1
+  fi
+  if [ ! -e "$migration_source" ]; then
+    if [ -e "$migration_target" ]; then
+      [ -f "$migration_target" ] || return 1
+      chmod 600 "$migration_target" || return 1
+    fi
+    return 0
+  fi
+  if [ ! -f "$migration_source" ] || [ -e "$migration_target" ]; then
+    printf 'Autolith MCP migration: mcp.sexp cannot be moved safely.\n' >&2
+    return 1
+  fi
+  if [ ! -e "$migration_new" ]; then
+    mkdir -m 700 -- "$migration_new" || return 1
+  fi
+  [ -d "$migration_new" ] || return 1
+  chmod 700 "$migration_new" || return 1
+  chmod 600 "$migration_source" || return 1
+  mv -- "$migration_source" "$migration_target" || return 1
+}

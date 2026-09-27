@@ -717,6 +717,74 @@ printf 'subprocess %s\\n' \"$*\" >> \"${AUTOLITH_TEST_EVENT_LOG:?}\"
                            "linked credential target stays unchanged")))))))
   nil)
 
+(-> test-launcher-mcp-configuration-migration () null)
+(defun test-launcher-mcp-configuration-migration ()
+  "Test fresh, completed, conflicting, and linked MCP configuration moves."
+  (with-test-configuration (configuration root)
+    (declare (ignore configuration))
+    (let ((migration
+            (asdf:system-relative-pathname
+             :autolith "script/migrate-launcher-data")))
+      (labels ((run (config-home)
+                 (release-script-tests--run
+                  (list "sh" "-c"
+                        ". \"$1\"; autolith_migrate_launcher_mcp_configuration \"$2\""
+                        "mcp-migration-test"
+                        (namestring migration) (namestring config-home))
+                  :ignore-error-status t)))
+        (dolist (case '("fresh" "migrated" "partial" "linked"))
+          (let* ((config-home
+                   (merge-pathnames (format nil "mcp-~A/" case) root))
+                 (old (merge-pathnames "autolith/mcp.sexp" config-home))
+                 (new (merge-pathnames "autolith-launcher/mcp.sexp"
+                                       config-home))
+                 (outside (merge-pathnames "outside.sexp" config-home)))
+            (ensure-directories-exist (merge-pathnames "marker" config-home))
+            (cond
+              ((string= case "fresh")
+               (release-script-tests--write-file old "private mcp"))
+              ((string= case "migrated")
+               (release-script-tests--write-file new "private mcp"))
+              ((string= case "partial")
+               (release-script-tests--write-file old "legacy mcp")
+               (release-script-tests--write-file new "private mcp"))
+              (t
+               (release-script-tests--write-file outside "outside")
+               (ensure-directories-exist old)
+               (sb-posix:symlink (namestring outside) (namestring old))))
+            (multiple-value-bind (output error-output status)
+                (run config-home)
+              (declare (ignore output))
+              (test-assert
+               (eq (zerop status)
+                   (not (member case '("partial" "linked") :test #'string=)))
+               (format nil "~A MCP migration: ~A" case error-output)))
+            (if (member case '("partial" "linked") :test #'string=)
+                (progn
+                  (test-assert
+                   (equal (uiop:read-file-string
+                           (if (string= case "linked") outside old))
+                          (if (string= case "linked") "outside" "legacy mcp"))
+                   "ambiguous MCP source stays unchanged")
+                  (when (string= case "partial")
+                    (test-assert (equal (uiop:read-file-string new)
+                                        "private mcp")
+                                 "existing MCP target stays unchanged")))
+                (progn
+                  (test-assert (not (probe-file old))
+                               "legacy MCP configuration is absent")
+                  (test-assert (equal (uiop:read-file-string new)
+                                      "private mcp")
+                               "the launcher owns MCP configuration")
+                  (multiple-value-bind (output error-output status)
+                      (run config-home)
+                    (declare (ignore output))
+                    (test-assert
+                     (zerop status)
+                     (format nil "~A MCP migration reruns: ~A"
+                             case error-output))))))))))
+  nil)
+
 (-> release-script-tests--source-launcher (pathname pathname) null)
 (defun release-script-tests--source-launcher (source-root root)
   "Exercise source-image selection, bootstrap prompting, and forced source use."
@@ -726,6 +794,7 @@ printf 'subprocess %s\\n' \"$*\" >> \"${AUTOLITH_TEST_EVENT_LOG:?}\"
          (recovery-directory (merge-pathnames "recovery/" fixture-root))
          (data-home (merge-pathnames "data/" fixture-root))
          (state-home (merge-pathnames "state/" fixture-root))
+         (config-home (merge-pathnames "config/" fixture-root))
          (home (merge-pathnames "home/" fixture-root))
          (active-directory (merge-pathnames "autolith-launcher/active/" data-home))
          (active-core (merge-pathnames "autolith-active.core" active-directory))
@@ -739,7 +808,7 @@ printf 'subprocess %s\\n' \"$*\" >> \"${AUTOLITH_TEST_EVENT_LOG:?}\"
          (log (merge-pathnames "launcher.log" fixture-root)))
     (uiop:ensure-all-directories-exist
      (list bin-directory script-directory recovery-directory
-           data-home state-home home))
+           data-home state-home config-home home))
     (uiop:copy-file (merge-pathnames "bin/autolith" source-root) launcher)
     (uiop:copy-file (merge-pathnames "script/launcher-cli.sh" source-root)
                     (merge-pathnames "launcher-cli.sh" script-directory))
@@ -835,6 +904,7 @@ printf '(:ACTIVE-IMAGE :VERSION 1\\n)\\n' > \"$active/manifest.sexp\"
              (list "AUTOLITH_AGENT_SANDBOX=off"
                    (format nil "XDG_DATA_HOME=~A" (namestring data-home))
                    (format nil "XDG_STATE_HOME=~A" (namestring state-home))
+                   (format nil "XDG_CONFIG_HOME=~A" (namestring config-home))
                    (format nil "AUTOLITH_SBCL=~A" (namestring fake-sbcl))
                    (format nil "AUTOLITH_TEST_REAL_SBCL=~A"
                            (uiop:getenv "AUTOLITH_SBCL"))
@@ -3422,7 +3492,8 @@ esac
              (format nil "autolith-release-script-tests-~A/" (make-identifier))
              (uiop:temporary-directory)))))
     (with-test-environment
-        (("XDG_DATA_HOME" (namestring (merge-pathnames "data/" root))))
+        (("XDG_DATA_HOME" (namestring (merge-pathnames "data/" root)))
+         ("XDG_CONFIG_HOME" (namestring (merge-pathnames "config/" root))))
       (unwind-protect
            (progn
              (release-script-tests--syntax source-root)

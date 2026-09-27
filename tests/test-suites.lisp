@@ -628,6 +628,7 @@
     test-installer-checksum-verification
     test-launcher-data-migration
     test-launcher-credential-migration
+    test-launcher-mcp-configuration-migration
     test-release-scripts))
 
 (define-test-suite data-transfer

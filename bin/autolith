@@ -44,6 +44,7 @@ esac
 source_checksums_path=$source_root/sbcl-source-releases.sha256
 terminal_state=
 state_home=$(xdg_base_directory "${XDG_STATE_HOME:-}" "$HOME/.local/state")
+config_home=$(xdg_base_directory "${XDG_CONFIG_HOME:-}" "$HOME/.config")
 cache_home=$(xdg_base_directory "${XDG_CACHE_HOME:-}" "$HOME/.cache")
 data_home=$(xdg_base_directory "${XDG_DATA_HOME:-}" "$HOME/.local/share")
 data_home=${data_home%/}
@@ -52,6 +53,7 @@ data_home=${data_home%/}
 source "$source_root/script/migrate-launcher-data" || exit 1
 autolith_migrate_launcher_data "$data_home" || exit 1
 autolith_migrate_launcher_credentials "$state_home" || exit 1
+autolith_migrate_launcher_mcp_configuration "$config_home" || exit 1
 launcher_data_root=$data_home/autolith-launcher
 runtime_command_path=$launcher_data_root/runtimes/command
 inherited_runtime_source_root=${AUTOLITH_SBCL_SOURCE_ROOT:-}
