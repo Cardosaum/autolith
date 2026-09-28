@@ -199,6 +199,7 @@
                              (:file "broker/provider")
                              (:file "broker/approval")
                              (:file "broker/mcp")
+                             (:file "broker/credential-stores")
                              (:file "broker/registered-tools")
                              (:file "broker/runtime")
                              (:file "broker/agent-provider")

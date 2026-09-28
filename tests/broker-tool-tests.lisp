@@ -2,6 +2,137 @@
 
 ;;;; -- Trusted Launcher Tool Tests --
 
+(defclass test-broker-credential-store (broker-credential-store)
+  ((value
+    :initarg :value
+    :reader test-broker-credential-store-value
+    :documentation "A secret returned by the test store."))
+  (:documentation "A custom broker credential store used by policy tests."))
+
+(defmethod broker-credential-store-read
+    ((store test-broker-credential-store) key)
+  "Return the test value only for its declared key."
+  (when (string= key "password")
+    (test-broker-credential-store-value store)))
+
+(-> test-broker-credential-stores () null)
+(defun test-broker-credential-stores ()
+  "Resolve declared store keys only inside an approved tool call."
+  (with-test-environment (("AUTOLITH_TEST_STORE_KEY" "environment-secret"))
+    (let ((*broker-credential-stores* nil)
+          (*broker-registered-tools* nil)
+          (reads 0)
+          (captured-token nil)
+          (frames nil))
+      (test-assert
+       (handler-case
+           (progn
+             (register-broker-credential-store
+              "db" (make-instance 'test-broker-credential-store
+                                  :value "database-secret"))
+             nil)
+         (broker-server-error () t))
+       "agent-side code cannot register a credential store")
+      (let ((*broker-registration-open-p* t))
+        (register-broker-credential-store
+         "db" (make-instance 'test-broker-credential-store
+                             :value "database-secret"))
+        (register-broker-credential-store
+         "environment"
+         (make-instance 'broker-environment-credential-store
+                        :bindings '(("token" . "AUTOLITH_TEST_STORE_KEY"))))
+        (test-assert
+         (handler-case
+             (progn
+               (make-instance
+                'broker-environment-credential-store
+                :bindings '(("token" . "FIRST")
+                            ("token" . "SECOND")))
+               nil)
+           (broker-server-error () t))
+         "duplicate environment store keys are rejected")
+        (test-assert
+         (handler-case
+             (progn
+               (register-broker-credential-store
+                "db" (make-instance 'test-broker-credential-store
+                                    :value "other"))
+               nil)
+           (broker-server-error () t))
+         "duplicate store names are rejected")
+        (test-assert
+         (handler-case
+             (progn
+               (register-broker-tool
+                "db" "invalid"
+                :description "Invalid credential declaration."
+                :parameters (json-object "type" "object")
+                :credentials '(("unknown" "password"))
+                :handler (lambda (arguments)
+                           (declare (ignore arguments)) "result"))
+               nil)
+           (broker-server-error () t))
+         "tools cannot declare an unknown store")
+        (register-broker-tool
+         "db" "credential-check"
+         :description "Check an approved broker credential."
+         :parameters (json-object "type" "object")
+         :credentials '(("db" "password") ("environment" "token"))
+         :handler (lambda (arguments)
+                    (declare (ignore arguments))
+                    (incf reads)
+                    (test-assert
+                     (handler-case
+                         (progn (broker-credential-value "db" "other") nil)
+                       (broker-server-error () t))
+                     "a handler cannot read an undeclared key")
+                    (setf captured-token
+                          (broker-credential-value "environment" "token"))
+                    (format nil "~A ~A"
+                            (broker-credential-value "db" "password")
+                            captured-token))))
+      (test-assert
+       (handler-case
+           (progn (broker-credential-value "db" "password") nil)
+         (broker-server-error () t))
+       "credentials are unavailable outside an approved handler")
+      (platform-setenv "AUTOLITH_TEST_STORE_KEY" "rotated-secret")
+      (let ((payload
+              (json-encode
+               (json-object "namespace" "db" "name" "credential-check"
+                            "arguments" (json-object)))))
+        (test-call-with-function-replacements
+         (list (list 'broker-terminal-approve
+                     (lambda (description)
+                       (declare (ignore description)) nil)))
+         (lambda ()
+           (broker-registered-tools-call
+            payload (lambda (frame) (push frame frames)))))
+        (test-assert (zerop reads) "denial does not read credentials")
+        (test-assert (equal frames '((:broker-result :status :denied)))
+                     "denial returns no credential data")
+        (setf frames nil)
+        (test-call-with-function-replacements
+         (list (list 'broker-terminal-approve
+                     (lambda (description)
+                       (declare (ignore description)) t)))
+         (lambda ()
+           (broker-registered-tools-call
+            payload (lambda (frame) (push frame frames)))))
+        (test-assert (= reads 1) "approval invokes the handler once")
+        (test-assert (string= captured-token "rotated-secret")
+                     "environment store values are read when used")
+        (let ((output (apply #'concatenate 'string
+                             (mapcar #'third
+                                     (rest (butlast (nreverse frames)))))))
+          (test-assert (not (search "database-secret" output))
+                       "custom store secrets are redacted")
+          (test-assert (not (search "rotated-secret" output))
+                       "environment store secrets are redacted")
+          (test-assert (search "[CREDENTIAL REDACTED]" output)
+                       "redaction is visible to the agent")))))
+  nil)
+
 (-> test-broker-registered-tool-policy () null)
 (defun test-broker-registered-tool-policy ()
   "Require trusted registration, exact calls, and one terminal decision."

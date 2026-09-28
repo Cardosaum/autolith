@@ -17,23 +17,25 @@
     :initarg :credential-variables
     :reader broker-registered-tool-credential-variables
     :type list
-    :documentation "Host variables whose values are redacted from the result."))
+    :documentation "Host variables whose values are redacted from the result.")
+   (credentials
+    :initarg :credentials
+    :reader broker-registered-tool-credentials
+    :type list
+    :documentation "Store and key pairs this tool may read after approval."))
   (:documentation "One launcher-owned tool registered before the broker listens."))
 
 (defvar *broker-registered-tools* nil
   "Trusted launcher tool registrations in the current broker process.")
 
-(defvar *broker-registration-open-p* nil
-  "True only while the broker loads its private initialization file.")
-
 (-> register-broker-tool
     (string string &key (:description string) (:parameters json-object)
                         (:handler function) (:approval keyword)
-                        (:credential-variables list))
+                        (:credential-variables list) (:credentials list))
     broker-registered-tool)
 (defun register-broker-tool
     (namespace name &key description parameters handler
-                         (approval ':prompt) credential-variables)
+                         (approval ':prompt) credential-variables credentials)
   "Register one fixed launcher callback during trusted broker initialization.
 
 HANDLER receives one JSON argument object and returns bounded text. Every
@@ -56,7 +58,18 @@ call is authorized by the broker, independently of agent tool permissions."
                (every (lambda (variable)
                         (and (non-empty-string-p variable)
                              (<= (length variable) 128)))
-                      credential-variables))
+                      credential-variables)
+               (listp credentials)
+               (every (lambda (credential)
+                        (and (listp credential)
+                             (= (length credential) 2)
+                             (every (lambda (part)
+                                      (and (non-empty-string-p part)
+                                           (<= (length part) 128)))
+                                    credential)
+                             (assoc (first credential)
+                                    *broker-credential-stores* :test #'string=)))
+                      credentials))
     (error 'broker-server-error
            :message "A trusted broker tool registration is invalid."
            :reason ':configuration))
@@ -65,7 +78,8 @@ call is authorized by the broker, independently of agent tool permissions."
                :namespace namespace :name name
                :description description :parameters parameters
                :handler handler :approval approval
-               :credential-variables credential-variables)))
+               :credential-variables credential-variables
+               :credentials credentials)))
     (when (find (tool-canonical-name tool) *broker-registered-tools*
                 :test #'string= :key #'tool-canonical-name)
       (error 'broker-server-error
@@ -138,23 +152,28 @@ call is authorized by the broker, independently of agent tool permissions."
                         (json-encode arguments)))))
       (funcall write-frame '(:broker-result :status :denied))
       (return-from broker-registered-tools-call nil))
-    (let* ((result (funcall (broker-registered-tool-handler tool) arguments))
-           (secrets (remove nil
-                            (mapcar #'uiop:getenv
-                                    (broker-registered-tool-credential-variables
-                                     tool))))
-           (safe-result
-             (and (stringp result)
-                  (redact-exact-string-values
-                   result secrets
-                   (safe-redaction-marker "[CREDENTIAL REDACTED]"
-                                          secrets)))))
-      (unless (and safe-result
-                   (<= (length safe-result) (* 1024 1024)))
-        (error 'broker-protocol-error
-               :message "The trusted tool returned invalid or oversized text."
-               :reason ':response))
-      (funcall write-frame '(:broker-result :status :open :code 200))
-      (with-input-from-string (stream safe-result)
-        (broker-provider--copy-stream stream write-frame))))
+    (let ((*broker-authorized-credentials*
+            (broker-registered-tool-credentials tool))
+          (*broker-used-credential-values* nil))
+      (let* ((result (funcall (broker-registered-tool-handler tool) arguments))
+             (secrets (append *broker-used-credential-values*
+                              (remove nil
+                                      (mapcar
+                                       #'uiop:getenv
+                                       (broker-registered-tool-credential-variables
+                                        tool)))))
+             (safe-result
+               (and (stringp result)
+                    (redact-exact-string-values
+                     result secrets
+                     (safe-redaction-marker "[CREDENTIAL REDACTED]"
+                                            secrets)))))
+        (unless (and safe-result
+                     (<= (length safe-result) (* 1024 1024)))
+          (error 'broker-protocol-error
+                 :message "The trusted tool returned invalid or oversized text."
+                 :reason ':response))
+        (funcall write-frame '(:broker-result :status :open :code 200))
+        (with-input-from-string (stream safe-result)
+          (broker-provider--copy-stream stream write-frame)))))
   nil)

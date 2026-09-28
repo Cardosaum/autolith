@@ -407,6 +407,7 @@
   test-broker-mcp-agent-route)
 
 (define-test-suite broker-tools
+  test-broker-credential-stores
   test-broker-registered-tool-policy
   test-broker-registered-agent-route)
 

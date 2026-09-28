@@ -123,6 +123,7 @@
     (configuration-ensure-directories configuration)
     (mcp--registry-restore nil)
     (setf *broker-registered-tools* nil)
+    (setf *broker-credential-stores* nil)
     (let ((*broker-registration-open-p* t))
       (broker--load-trusted-init configuration))
     (provider-bootstrap-configuration configuration)
