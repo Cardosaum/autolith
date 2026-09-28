@@ -81,6 +81,10 @@ developers, but I consider correct for self-modifiability.
   agent requests over the private socket; their authorization decisions run
   in the broker and use the trusted terminal relay for prompts. The agent
   holds only schemas and proxy tools, never MCP transport credentials.
+  The launcher init file registers named CLOS credential stores. MCP transport
+  bindings and approved launcher tool handlers resolve exact store keys at
+  use time. Tool declarations restrict which keys their handlers may read;
+  the broker redacts values read through that interface from tool results.
 - The *recovery image* is a separately built pristine core, which Autolith
   will reboot into in case the current image is FUBAR. Autolith can work
   using the recovery image to either fix figure out the issue with your

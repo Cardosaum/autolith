@@ -14,7 +14,10 @@ Autolit's MCP configuration is an S-expression, see below.
 
 * Start with one server
 
-Create =${XDG_CONFIG_HOME:-~/.config}/autolith/mcp.sexp=:
+Create =${XDG_CONFIG_HOME:-~/.config}/autolith-launcher/mcp.sexp= for
+credentialed broker MCP servers on macOS and Linux. Unsandboxed sessions use
+=${XDG_CONFIG_HOME:-~/.config}/autolith/mcp.sexp=. The broker reads only the
+launcher-owned file:
 
 #+BEGIN_SRC lisp
 (:version 1
@@ -63,6 +66,17 @@ Map an environment variable into a server environment or HTTP header:
 #+BEGIN_SRC lisp
 ("TARGET-NAME" :environment "SOURCE_VARIABLE")
 #+END_SRC
+
+For a broker store registered in the launcher's private =init.lisp=, use:
+
+#+BEGIN_SRC lisp
+("TARGET-NAME" :credential "store-name" "key-name")
+#+END_SRC
+
+This form works in broker-owned stdio =:environment= and HTTP =:headers=
+bindings. The broker resolves the named key when the transport needs it.
+Unknown stores and missing keys fail closed. The agent cannot register broker
+stores or select keys in a tool request.
 
 For an =Authorization= header, the source value is the full value the
 server expects, such as =Bearer ...=.

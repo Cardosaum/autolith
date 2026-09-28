@@ -254,18 +254,44 @@ Inside the sandbox:
 - Put credentialed MCP registrations in
   =$XDG_CONFIG_HOME/autolith-launcher/mcp.sexp= or the launcher's private
   =init.lisp=. The broker owns their transports and stored credentials. MCP
-  tools marked as trusted read-only can run automatically under =:read-only=
+  =:environment= and =:headers= bindings may reference a broker credential
+  store as =(TARGET :credential "store" "key")= after that store is registered
+  in the private =init.lisp=. Environment variable references remain supported.
+  MCP tools marked as trusted read-only can run automatically under =:read-only=
   policy; other calls ask through the launcher terminal. MCP registrations in
   the agent's own configuration and project directories are not loaded inside
   the agent sandbox.
 - A private launcher =init.lisp= may call =register-broker-tool= with a fixed
   namespace and name, description, JSON schema, handler, approval policy, and
-  credential variable names. For example, a registered =db.query= handler can
+  credential declarations. For example, a registered =db.query= handler can
   perform a database query with a credential available only in the broker.
   The handler receives the agent's JSON argument object, validates the query,
   and returns text. =:prompt= is the default policy; =:allow= must be chosen
-  explicitly for a trusted automatic operation. The broker redacts the named
-  credential values from returned text. A denial never calls the handler.
+  explicitly for a trusted automatic operation. A denial never calls the
+  handler.
+- The private =init.lisp= can register a named CLOS credential store with
+  =register-broker-credential-store=. Subclass =broker-credential-store= and
+  implement =broker-credential-store-read= for a custom source. Its method
+  receives a key and returns a nonempty secret string or =nil= when unavailable.
+  The included =broker-environment-credential-store= maps public keys to
+  host variable names, reading each value when used rather than saving it in
+  the image:
+
+  #+BEGIN_SRC lisp
+  (register-broker-credential-store
+   "database"
+   (make-instance 'broker-environment-credential-store
+                  :bindings '(("password" . "AUTOLITH_DB_PASSWORD"))))
+  #+END_SRC
+
+  A =register-broker-tool= call declares
+  =:credentials '(("database" "password"))=.
+  After approval, its handler calls =(broker-credential-value "database"
+  "password")=. An undeclared key is rejected. The broker redacts values read
+  through this interface from returned text. The older =:credential-variables=
+  tool option remains for existing launcher init files and is scheduled for
+  removal in v0.53.0. Handlers must still validate requested operations and
+  avoid returning credentials in transformed form.
 - Commands run with full access by default, because the sandbox already
   confines them. Choose =/permissions ask= or =/permissions auto= to be
   asked instead; the choice persists. There is no separate =sandbox= choice.
