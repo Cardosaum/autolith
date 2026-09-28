@@ -2,6 +2,83 @@
 
 ;;;; -- Brokered MCP Tests --
 
+(-> test-broker-mcp-credential-store () null)
+(defun test-broker-mcp-credential-store ()
+  "Resolve a broker store key for HTTP and stdio MCP transports."
+  (with-test-environment (("AUTOLITH_MCP_STORE_TEST_KEY" "database-secret"))
+    (let ((*broker-credential-stores* nil))
+      (let ((*broker-registration-open-p* t))
+        (register-broker-credential-store
+         "service"
+         (make-instance 'broker-environment-credential-store
+                        :bindings '(("password" . "AUTOLITH_MCP_STORE_TEST_KEY")))))
+      (dolist (transport
+               '((:type :http :url "https://example.test/mcp"
+                  :headers (("Authorization" :credential "service" "password")))
+                 (:type :stdio :command "/bin/true"
+                  :environment (("SERVICE_PASSWORD" :credential
+                                 "service" "password")))))
+        (let* ((server (mcp-server-configuration-create
+                        :name "credential-store-test" :transport transport))
+               (binding (first (mcp-tools--credential-bindings server))))
+          (test-assert
+           (equal (mcp-environment-binding-source binding)
+                  '("service" "password"))
+           "MCP config retains only the store and key reference")
+          (mcp-tools--call-with-server-secret-use
+           server
+           (lambda ()
+             (test-assert
+              (string= (mcp-tools--environment-value server binding)
+                       "database-secret")
+              "MCP transports resolve a broker store value at use time")
+             (let ((resolved
+                     (if (eq (getf transport :type) :http)
+                         (rest
+                          (first
+                           (funcall
+                            (mcp-tools--http-headers-function
+                             server (mcp-server-configuration-transport server)))))
+                         (find "SERVICE_PASSWORD=database-secret"
+                               (funcall
+                                (mcp-tools--stdio-environment-function
+                                 server (mcp-server-configuration-transport server)))
+                               :test #'string=))))
+               (test-assert
+                (if (eq (getf transport :type) :http)
+                    (string= resolved "database-secret")
+                    (not (null resolved)))
+                "the transport receives the resolved credential"))))))
+      (let* ((server (mcp-server-configuration-create
+                      :name "missing-store-test"
+                      :transport
+                      '(:type :http :url "https://example.test/mcp"
+                        :headers (("Authorization" :credential
+                                   "unknown" "password")))))
+             (binding (first (mcp-tools--credential-bindings server))))
+        (test-assert
+         (handler-case
+             (progn
+               (mcp-tools--call-with-server-secret-use
+                server
+                (lambda ()
+                  (mcp-tools--environment-value server binding)))
+               nil)
+           (mcp-environment-unavailable () t))
+         "an unknown broker store fails closed"))
+      (test-assert
+       (handler-case
+           (progn
+             (mcp-server-configuration-create
+              :name "invalid-key"
+              :transport
+              '(:type :http :url "https://example.test/mcp"
+                :headers (("Authorization" :credential "service" 42))))
+             nil)
+         (mcp-configuration-error () t))
+       "MCP credential references require string store keys")))
+  nil)
+
 (-> broker-mcp-tests--body (list) json-object)
 (defun broker-mcp-tests--body (frames)
   "Decode one complete bounded JSON result from broker response FRAMES."

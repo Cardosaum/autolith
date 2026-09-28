@@ -125,9 +125,9 @@
    (source
     :initarg :source
     :reader mcp-environment-binding-source
-    :type non-empty-string
-    :documentation "The parent environment variable read only when needed."))
-  (:documentation "One credential-safe reference to a process environment value."))
+    :type (or string list)
+    :documentation "A host variable or named broker store key read when needed."))
+  (:documentation "One credential reference for an MCP transport target."))
 
 (defclass mcp-transport-configuration ()
   ()
@@ -432,16 +432,20 @@ bound policy takes effect without reloading this file."
     mcp-environment-binding)
 (defun mcp-configuration--binding
     (form &key header-p pathname server-name)
-  "Parse one environment-backed process or HTTP binding FORM."
+  "Parse one environment or broker-store process or HTTP binding FORM."
   (unless (and (mcp-configuration--proper-list-p form)
-               (= (length form) 3)
-               (eq (second form) :environment))
+               (or (and (= (length form) 3)
+                        (eq (second form) :environment))
+                   (and (= (length form) 4)
+                        (eq (second form) :credential))))
     (mcp-configuration--error
-     "An MCP environment binding must be (TARGET :ENVIRONMENT SOURCE)."
+     "An MCP binding must name an environment variable or broker credential."
      :pathname pathname
      :server-name server-name))
   (let ((target (first form))
-        (source (third form)))
+        (source (if (eq (second form) :environment)
+                    (third form)
+                    (list (third form) (fourth form)))))
     (unless (if header-p
                 (mcp-configuration--http-header-name-p target)
                 (mcp-configuration--environment-name-p target))
@@ -450,14 +454,21 @@ bound policy takes effect without reloading this file."
                (if header-p "HTTP header" "environment"))
        :pathname pathname
        :server-name server-name))
-    (unless (mcp-configuration--environment-name-p source)
+    (unless (if (stringp source)
+                (mcp-configuration--environment-name-p source)
+                (every (lambda (part)
+                         (and (non-empty-string-p part)
+                              (<= (length part) 128)))
+                       source))
       (mcp-configuration--error
-       "Invalid MCP source environment name."
+       "Invalid MCP credential source."
        :pathname pathname
        :server-name server-name))
     (make-instance 'mcp-environment-binding
                    :target (copy-seq target)
-                   :source (copy-seq source))))
+                   :source (if (stringp source)
+                               (copy-seq source)
+                               (mapcar #'copy-seq source)))))
 
 (-> mcp-configuration--bindings
     (t &key (:header-p boolean)

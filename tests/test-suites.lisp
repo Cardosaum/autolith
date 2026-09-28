@@ -403,6 +403,7 @@
   test-broker-agent-model-discovery)
 
 (define-test-suite broker-mcp
+  test-broker-mcp-credential-store
   test-broker-mcp-policy
   test-broker-mcp-agent-route)
 

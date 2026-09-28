@@ -133,14 +133,22 @@
     mcp-environment-unavailable)
 (defun mcp-tools--environment-unavailable-condition (configuration binding)
   "Return the structured missing-environment condition for BINDING."
-  (let ((source (mcp-environment-binding-source binding)))
+  (let* ((reference (mcp-environment-binding-source binding))
+         (source (if (stringp reference)
+                     reference
+                     (format nil "~A/~A" (first reference) (second reference)))))
     (make-condition
      'mcp-environment-unavailable
      :message
-     (format nil
-             "MCP server ~A needs environment variable ~A, but it is unset."
-             (mcp-server-configuration-name configuration)
-             source)
+     (if (stringp reference)
+         (format nil
+                 "MCP server ~A needs environment variable ~A, but it is unset."
+                 (mcp-server-configuration-name configuration)
+                 source)
+         (format nil
+                 "MCP server ~A needs broker credential ~A, but it is unavailable."
+                 (mcp-server-configuration-name configuration)
+                 source))
      :server-name (mcp-server-configuration-name configuration)
      :required-p (mcp-server-configuration-required-p configuration)
      :cause nil
@@ -162,7 +170,10 @@
                  (if present-p
                      cached-value
                      (setf (gethash source source-values)
-                           (uiop:getenv source))))))
+                           (if (stringp source)
+                               (uiop:getenv source)
+                               (broker-credential-store--resolve
+                                (first source) (second source))))))))
         (if (non-empty-string-p value)
             (push (cons binding value) snapshot)
             (unless missing-condition
