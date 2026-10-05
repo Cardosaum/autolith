@@ -1325,6 +1325,9 @@
            #:unregister-application-command
            #:unregister-context-contributor
            #:vault-contents
+           #:*structural-program*
+           #:structural-register-tools
+           #:structural-register-default-tools
            #:worker-main))
 
 (in-package #:autolith)
