@@ -1332,6 +1332,11 @@
            #:*debug-adapter-arguments*
            #:debug-register-tools
            #:debug-register-default-tools
+           #:register-context-rule
+           #:unregister-context-rule
+           #:context-rule-note
+           #:worker-tool-call
+           #:worker-tool-context
            #:worker-main))
 
 (in-package #:autolith)
